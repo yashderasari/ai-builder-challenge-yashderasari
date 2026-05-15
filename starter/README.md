@@ -1,16 +1,8 @@
-# Asset tracking — challenge starter
+# Asset tracking — submission
 
-Welcome. **Read [`../docs/CHALLENGE.md`](../docs/CHALLENGE.md) first** — it explains what you're building. If you want more narrative on *why* this kind of system exists, [`../docs/CONTEXT.md`](../docs/CONTEXT.md) is optional background.
+Built by Yash Derasari for the take-home challenge.
 
-This README is operational: how to install, run, and deploy.
-
-## One-click deploy
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FREPLACE_WITH_YOUR_REPO%2Fasset-tracking-challenge%2Ftree%2Fmain%2Fstarter&env=API_BASE_URL,API_TOKEN&envDescription=Provided%20with%20your%20challenge%20brief)
-
-(If you're forking and submitting, update the URL above to point at your fork.)
-
-## Quick start
+## How to run locally
 
 ```bash
 # From the monorepo root
@@ -19,73 +11,80 @@ pnpm dev
 # API on :8080, starter on :3000
 ```
 
-Or from this directory:
-
-```bash
-pnpm install      # if you haven't from the root
-cp .env.example .env
-# Edit .env with the API URL and token from your challenge email
-pnpm dev
-```
+Copy `starter/.env.example` → `starter/.env` and fill in `API_BASE_URL` and `API_TOKEN` from your challenge email. For local dev the defaults work as-is.
 
 Open http://localhost:3000.
 
-The starter expects the upstream API at `API_BASE_URL` (default `http://localhost:8080/v1`). Browser requests go through a same-origin proxy at `/api/upstream/*` — the proxy attaches the bearer token server-side, so `API_TOKEN` never reaches the client.
+## What was built
 
-## What's prebuilt
+**Tech scan workflows** (`/tech/*`)
 
-| File | What |
+Four screens for a lab tech — receive, store, deploy, transfer. Built for the 11pm-in-a-cold-dock-bay constraint: large tap targets (min 44px), focus stays on the input after any error, every error message names the problem and says what to do next. Both USB/Bluetooth keyboard-wedge scanners and phone camera scanning (`@zxing/browser`, Code 128 + QR) are supported via an explicit toggle per page.
+
+**Manager dashboard** (`/manager`, `/manager/assets/[tag]`)
+
+Asset list with client-side pagination (25/page), filter by state + site, full-text search across tag/serial/model. Needs-attention strip at the top surfaces recent activity and RMA-pending counts without requiring the manager to hunt. Asset detail shows an identity card and a full event log (newest-first) with state-transition pills.
+
+**Three-way reconciliation** (`/manager/reconcile`)
+
+Server-side join at `app/api/reconcile/route.ts` pulls ops, facilities, and finance, then classifies differences into three parent categories per the system's design (CONTEXT.md):
+
+- **Expected** — scope differences (stored item not in facilities). Not a problem.
+- **Real drift** — genuine disagreements (ghost tags, location mismatch). Action needed.
+- **Ambiguous** — needs a human (disposed-but-capitalized, stale observation). Review before acting.
+
+Each bucket has a plain-English title and a one-sentence "what this means" written for a non-technical asset manager who runs this every Monday.
+
+**Write-back to facilities and finance**
+
+Deploy → POST to facilities (set rack location) + finance (capitalize). Store from `in_service` → POST to facilities with `rack_location: null` to de-rack. Both fire from server-side route handlers (`app/api/scans/deploy/route.ts`, `app/api/scans/store/route.ts`) so the writes are atomic and the token stays server-side.
+
+**Dev surfaces**
+
+- `/dev/reset` — one-button database reset for demo prep
+- `/dev/barcodes` — printable Code 128 barcodes for 7 interesting assets (drifted, ghost, disposed, RMA), 3 locations, 2 badges
+
+## Environment variables
+
+| Variable | Notes |
 |---|---|
-| `lib/api-client.ts` | Typed wrapper around every `/v1/*` endpoint. In the browser it talks to `/api/upstream`; on the server it goes directly to `API_BASE_URL`. Throws `ApiError` with the structured error payload. |
-| `lib/types.ts` | TypeScript mirror of the API schemas. |
-| `lib/auth.ts` | Cookie-based role switcher between `tech-jane` and `manager-paul`. |
-| `components/ScanInput.tsx` | Auto-focus, Enter-to-submit, glove-sized input. Use it or replace it. |
-| `components/RoleSwitcher.tsx` | Header button to swap roles. |
-| `app/api/upstream/[...path]/route.ts` | Same-origin proxy that adds the bearer token. Don't modify unless you have a reason. |
-| `app/page.tsx` | Landing page. |
-| `docs/api-reference.md` | API contract. |
-| `docs/tips.md` | Notes you'll want to read before coding. |
-| `docs/happy-path.md` | 10-step smoke test. Run before submitting. |
+| `API_BASE_URL` | Upstream API including `/v1`. Default: `http://localhost:8080/v1` |
+| `API_TOKEN` | Server-only. Never prefix with `NEXT_PUBLIC_`. Browser code goes through `/api/upstream/*`. |
 
-## What you'll build
+## Three calls I nearly made the other way
 
-These files are stubs you'll replace. Read [`../docs/CHALLENGE.md`](../docs/CHALLENGE.md) for the requirements behind each.
+**1. Server-side writebacks vs. client-side direct**
 
-**Tech (mobile-first scan workflows):**
+The brief says to "decide where the writes live" for facilities and finance. The easy path is firing them from the browser after a successful scan response — the proxy already handles the token, so it's not a security issue per se. I put them in server-side route handlers (`app/api/scans/deploy`, `app/api/scans/store`) instead. The reason: doing all three writes (ops scan + facilities + finance) in one server round-trip means partial failures are visible in one place, the logic is testable without a browser, and the reconcile report can trust that a successful deploy response means all three systems were updated. The downside is an extra network hop from browser → Next.js → API, but the tradeoff is clearly worth it here.
 
-| File | Build |
-|---|---|
-| `app/tech/receive/page.tsx` | The dock-side receive scan. New tag → create. Duplicate tag + matching serial → idempotent. Duplicate tag + different serial → loud error. |
-| `app/tech/store/page.tsx` | Asset scan → storage location scan → commit. |
-| `app/tech/deploy/page.tsx` | Asset scan → deploy location scan (must include rack + ru) → commit. Should also write back to facilities + finance. |
-| `app/tech/transfer/page.tsx` | Asset scan → receiving party's badge scan → custodian changes; state doesn't. |
-| `app/tech/page.tsx` | Optional tech landing page. |
+**2. Explicit scan mode toggle vs. auto-detect**
 
-**Manager (desktop):**
+The brief says both USB scanner and phone camera flows should "feel native." The tempting path is auto-detecting: if the device has no physical keyboard (mobile), switch to camera automatically. I kept it as an explicit toggle per page instead. Auto-detection based on `navigator.maxTouchPoints` or user-agent is unreliable — a tablet with a paired Bluetooth scanner would get the wrong default, and a tech switching between workstations mid-shift shouldn't have the UI change under them. Explicit is predictable, and predictable matters at 11pm in a dock bay.
 
-| File | Build |
-|---|---|
-| `app/manager/page.tsx` | Asset list. Filter by state / site / custodian. Links to detail. |
-| `app/manager/assets/[tag]/page.tsx` | Asset detail. Current state + event history. |
-| `app/manager/reconcile/page.tsx` | Renders the reconciliation report from the route handler below. |
-| `app/api/reconcile/route.ts` | **Server-side join.** Pulls ops, facilities, and finance. Classifies. Returns a structured report. Currently returns 501. |
+**3. Reconcile categories: cause-based vs. severity-based**
 
-**Barcode tooling (your call where it lives):**
+My first instinct was to sort by severity (critical / needs-review / expected). Every diff tool does this. I switched to cause-based buckets (ghost / missing / location mismatch / stale / state-finance conflict) because severity hides the "why," and the "why" is what tells a manager whether to send a tech to the rack or call finance. A "critical" label on a disposed-but-capitalized asset and a "critical" label on a ghost in facilities would both be red but require completely different responses. Cause-based buckets mean each bucket has exactly one action associated with it.
 
-A way to produce scannable barcodes for a handful of asset tags (pick interesting ones) + a handful of locations. Could be `app/dev/barcodes/page.tsx`, a printable PDF, a script under `scripts/`, whatever fits.
+## Pushback on the brief
 
-**Your README:**
+**"Three scan endpoints (receive, store, deploy)"** — The brief's "How this works" section counts three scan endpoints, but the API has four: `receive`, `store`, `deploy`, and `transfer`. The brief's own "What to build" section correctly requires all four. The count in the summary is off by one.
 
-A `README.md` at the root of your fork. Include:
+**"The happy-path is a 10-step smoke test"** — The table header in the brief says 10 steps; the actual checklist has 11 (the last one covers mobile viewport). Not a problem in practice, but worth noting since we were told to count.
 
-- A **"Three calls I nearly made the other way"** section.
-- Anything in the brief or starter you'd push back on — bugs, typos, confusing claims. Pushback is a positive signal.
-- How to run your app locally and what env vars it needs.
+**"Two static mocks for facilities and finance"** — The mocks accept POSTs and persist changes in-memory until `/v1/reset` or server restart. They're not static — they're mutable in-memory overlays on top of the seeded baseline. This is the right design for the challenge (otherwise write-back would be untestable), but "static" is the wrong word.
+
+## Architecture notes (re: future extensibility)
+
+Per CONTEXT.md, the following are explicitly out of scope but shouldn't be architecturally blocked:
+
+- **Parent-child asset relationships** (chassis + serialized blades): the `Asset` type already has `parent_asset_tag`. The receive form would need a "parent" field; the rest of the system handles it already.
+- **Offline scan queueing**: the scan pages are intentionally stateless (scan → submit → result → reset). Adding a queue would mean persisting pending scans to `localStorage` and replaying on reconnect — nothing in the current design prevents this.
+- **Tracking barcode tags as assets**: tags are just strings today. Promoting them to first-class assets would require a new asset class and a tag-issuance workflow, but wouldn't conflict with anything built here.
 
 ## Scripts
 
 ```bash
-pnpm dev          # Next dev server
+pnpm dev          # Next dev server on :3000
 pnpm build        # Production build
 pnpm start        # Run the production build
 pnpm typecheck    # tsc --noEmit
@@ -93,13 +92,8 @@ pnpm test         # Vitest
 pnpm lint         # next lint
 ```
 
-## Environment variables
+## One-click deploy
 
-| Variable | Notes |
-|---|---|
-| `API_BASE_URL` | Upstream API including `/v1`, e.g. `http://localhost:8080/v1` |
-| `API_TOKEN` | Server-only. Do **not** prefix with `NEXT_PUBLIC_`. Browser code hits `/api/upstream/*` instead. |
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FREPLACE_WITH_YOUR_REPO%2Fasset-tracking-challenge%2Ftree%2Fmain%2Fstarter&env=API_BASE_URL,API_TOKEN&envDescription=Provided%20with%20your%20challenge%20brief)
 
-## Submitting
-
-Fill out **https://forms.gle/6gxhe8Js98KGqSDx8** with your deployed URL, repo link, and 3–5 minute Loom. Full details in [`../docs/CHALLENGE.md`](../docs/CHALLENGE.md).
+Update the URL above to point at your fork before submitting.

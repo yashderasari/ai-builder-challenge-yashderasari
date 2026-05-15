@@ -91,6 +91,9 @@ async function request<T>(
   const json: unknown = text ? JSON.parse(text) : null;
 
   if (!res.ok) {
+    if (res.status === 429) {
+      throw new ApiError(429, "rate_limited", "Too many requests — slow down and try again.");
+    }
     const errBody = json as ApiErrorBody | null;
     const code = errBody?.error?.code ?? "unknown_error";
     const message = errBody?.error?.message ?? `HTTP ${res.status}`;

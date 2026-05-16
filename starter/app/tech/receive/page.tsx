@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import Link from "next/link";
 import { ScanInput } from "@/components/ScanInput";
 import { CameraScanInput } from "@/components/CameraScanInput";
 import { ScanFeedback } from "@/components/ScanFeedback";
@@ -353,6 +354,23 @@ export default function TechReceivePage() {
             </div>
             <p className="text-sm text-gray-700">{existingAsset.manufacturer} {existingAsset.model} · {existingAsset.serial}</p>
           </div>
+          {/* Fast-path to next step — only for cleanly received assets */}
+          {existingAsset.state === "received" && (
+            <div className="grid grid-cols-2 gap-3">
+              <Link
+                href={`/tech/store?tag=${existingAsset.asset_tag}`}
+                className="rounded-lg border border-yellow-300 bg-yellow-50 px-4 py-3 text-sm font-medium text-yellow-800 hover:bg-yellow-100 text-center min-h-[44px] flex items-center justify-center"
+              >
+                Store this asset →
+              </Link>
+              <Link
+                href={`/tech/deploy?tag=${existingAsset.asset_tag}`}
+                className="rounded-lg border border-green-300 bg-green-50 px-4 py-3 text-sm font-medium text-green-800 hover:bg-green-100 text-center min-h-[44px] flex items-center justify-center"
+              >
+                Deploy this asset →
+              </Link>
+            </div>
+          )}
           <button
             onClick={reset}
             className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 font-medium text-gray-700 hover:bg-gray-50 min-h-[44px]"

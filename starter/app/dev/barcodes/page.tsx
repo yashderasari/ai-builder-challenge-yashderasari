@@ -5,8 +5,7 @@ import { useEffect, useRef } from "react";
 // bwip-js is a CommonJS module — use dynamic require inside useEffect
 declare global {
   interface Window {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    bwipjs?: any;
+    bwipjs?: unknown;
   }
 }
 
@@ -17,12 +16,12 @@ type BarcodeItem = {
 };
 
 const ASSET_BARCODES: BarcodeItem[] = [
-  { value: "C0000101", label: "C0000101", note: "in_service — location mismatch vs facilities" },
-  { value: "C0000104", label: "C0000104", note: "stored — missing from facilities (expected)" },
-  { value: "C0000107", label: "C0000107", note: "received — ghost: missing from facilities" },
-  { value: "C0000108", label: "C0000108", note: "rma_pending — ambiguous vs finance" },
-  { value: "C0000109", label: "C0000109", note: "disposed — ghost in finance (state conflict)" },
-  { value: "C0000112", label: "C0000112", note: "stored — stale facilities observation" },
+  { value: "C0000101", label: "C0000101", note: "in_service — clean, all systems agree (baseline scan test)" },
+  { value: "C0000104", label: "C0000104", note: "stored — expected gap: facilities doesn't track storage" },
+  { value: "C0000107", label: "C0000107", note: "received — expected gap: facilities doesn't track receiving dock (not a ghost)" },
+  { value: "C0000108", label: "C0000108", note: "rma_pending — real drift: facilities still shows rack B-06/U30; finance still capitalized" },
+  { value: "C0000109", label: "C0000109", note: "disposed — real drift: facilities still shows rack T-02/U10; finance still capitalized" },
+  { value: "C0000112", label: "C0000112", note: "stored — expected gap: no facilities record (C0000111 is the stale observation, not this asset)" },
   { value: "C9999999", label: "C9999999", note: "unknown tag — use for receive new asset" },
 ];
 
@@ -54,16 +53,9 @@ function BarcodeCanvas({ value, id }: { value: string; id: string }) {
           textxalign: "center",
         });
       } catch {
-        // fallback: render as QR if code128 fails for long values
         try {
-          bwipjs.toCanvas(canvasRef.current, {
-            bcid: "qrcode",
-            text: value,
-            scale: 4,
-          });
-        } catch {
-          // silently skip
-        }
+          bwipjs.toCanvas(canvasRef.current, { bcid: "qrcode", text: value, scale: 4 });
+        } catch { /* silently skip */ }
       }
     });
     return () => { cancelled = true; };

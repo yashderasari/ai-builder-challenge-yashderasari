@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { RoleSwitcher } from "@/components/RoleSwitcher";
 import "./globals.css";
 
@@ -16,14 +17,14 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <header className="border-b bg-white">
-          <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
-            <a href="/" className="font-semibold text-gray-900">
+          <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+            <Link href="/" className="font-semibold text-gray-900">
               Asset tracking
-            </a>
+            </Link>
             <RoleSwitcher />
           </div>
         </header>
-        <main className="max-w-5xl mx-auto px-4 py-6">{children}</main>
+        <main className="max-w-7xl mx-auto px-4 py-6">{children}</main>
       </body>
     </html>
   );

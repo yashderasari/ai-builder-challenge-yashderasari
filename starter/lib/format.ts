@@ -26,6 +26,19 @@ export const CLASS_LABELS: Record<AssetClass, string> = {
   consumable_durable: "Consumable / Durable",
 };
 
+export function parseLocationBarcode(raw: string): Partial<Location> | null {
+  const parts = raw.trim().split("/").map(s => s.trim()).filter(Boolean);
+  if (parts.length < 1) return null;
+  const [site, room, row, rack, ru] = parts;
+  return {
+    site: site ?? "",
+    room: room ?? null,
+    row: row ?? null,
+    rack: rack ?? null,
+    ru: ru ?? null,
+  };
+}
+
 export function formatLocation(loc: Location): string {
   const parts = [loc.site, loc.room, loc.row, loc.rack, loc.ru ? `RU ${loc.ru}` : null];
   return parts.filter(Boolean).join(" › ");
@@ -39,6 +52,18 @@ export function formatDate(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/** Formats an ISO timestamp as `yyyy-mm-dd hh:mm:ss` (UTC). Date-only strings pass through unchanged. */
+export function formatTimestamp(iso: string): string {
+  if (!iso) return "—";
+  if (iso.includes("T")) {
+    const idx = iso.indexOf("T");
+    const date = iso.slice(0, idx);
+    const time = iso.slice(idx + 1).replace("Z", "").split(".")[0];
+    return `${date} ${time}`;
+  }
+  return iso; // already date-only e.g. "2025-09-20"
 }
 
 export function relativeTime(iso: string): string {

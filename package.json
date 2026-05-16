@@ -19,7 +19,9 @@
       "better-sqlite3",
       "esbuild",
       "sharp",
-      "unrs-resolver"
+      "unrs-resolver",
+      "@zxing/browser",
+      "bwip-js"
     ]
   }
 }

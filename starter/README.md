@@ -33,7 +33,7 @@ Server-side join at `app/api/reconcile/route.ts` pulls ops, facilities, and fina
 - **Real drift** — genuine disagreements (ghost tags, location mismatch). Action needed.
 - **Ambiguous** — needs a human (disposed-but-capitalized, stale observation). Review before acting.
 
-Each bucket has a plain-English title and a one-sentence "what this means" written for a non-technical asset manager who runs this every Monday.
+Each issue row carries a hover tooltip with a plain-English explanation — what happened, who needs to act, and what they should do — written for a non-technical asset manager who runs this every Monday. The asset detail page (`/manager/assets/[tag]`) surfaces the same explanations inline, without requiring a hover, alongside the identity card.
 
 **Write-back to facilities and finance**
 
@@ -72,6 +72,28 @@ My first instinct was to sort by severity (critical / needs-review / expected). 
 **"The happy-path is a 10-step smoke test"** — The table header in the brief says 10 steps; the actual checklist has 11 (the last one covers mobile viewport). Not a problem in practice, but worth noting since we were told to count.
 
 **"Two static mocks for facilities and finance"** — The mocks accept POSTs and persist changes in-memory until `/v1/reset` or server restart. They're not static — they're mutable in-memory overlays on top of the seeded baseline. This is the right design for the challenge (otherwise write-back would be untestable), but "static" is the wrong word.
+
+**State machine diagram omits `received → in_service`** — CHALLENGE.md's diagram implies you must always store before deploying (`received → stored → in_service`). The actual API (`state-machine.ts` line 12) allows a direct `received → in_service` transition. A candidate who trusted the diagram would block deploy on received assets in their UI — wrong behavior. I verified against the source and kept the direct path open.
+
+## Backend gaps worth flagging
+
+These aren't brief inconsistencies — they're genuine API surface gaps a real production system would need to close.
+
+**Transfer: no ownership check** — The transfer endpoint accepts any `user_id` as the initiating party with no server-side verification against `asset.custodian`. In production, only the current custodian (or a manager) should be able to initiate a handoff. With the cookie-based role switcher, any tech can transfer any asset regardless of who holds it. Real fix: verify the `from` identity server-side before accepting the scan.
+
+**Transfer: no user registry** — `to_custodian` accepts any arbitrary string. The API has no `/v1/users` endpoint to validate that the recipient is a real person. The UI can heuristically block asset-tag-shaped strings (e.g. `C0001234`), but a tech could scan a random badge value and it would go through. Real fix: expose a user lookup endpoint so badge scans can be validated before submission.
+
+**RMA return path: no scan endpoint** — The state machine supports `rma_pending → received` (the RMA return path), but none of the four exposed scan endpoints perform this transition. When a tech physically has a returned RMA unit in hand, there's no workflow to get it back into the system — `/tech/receive` logs a `duplicate_receive` event and leaves the asset stuck in `rma_pending`. Real fix: expose a fifth scan endpoint (`rma_receive_back`) or extend `receive` to handle the return case.
+
+**Receive on terminated assets** — The API accepts receive scans on `disposed` and `rma_pending` assets and logs a `duplicate_receive` event without complaint. A disposed asset that gets scanned at receiving should be a hard error, not a silent duplicate. This is a validation gap in the API, not in the UI — the UI surfaces a warning, but the underlying write still goes through.
+
+## InQueue design decision
+
+The deploy and store pages show a panel of assets already queued for that action — `received` assets waiting to be stored, `stored` assets waiting to be deployed. A natural instinct is to scope this list to the logged-in tech (only show assets whose `custodian` matches the current user).
+
+I deliberately show all assets in the relevant state instead, sorted by `updated_at` descending, filtered to the last 24 hours. The reasoning: `custodian` means "who last touched this," not "who is responsible for processing it next." A dock shift doesn't map cleanly to a single person — the tech on duty at 11pm needs visibility into everything received by the previous shift, not just their own scans. Scoping to custodian would hide real work items.
+
+In a production system with real auth and site-level access control, this queue would be scoped to the site or team. The current implementation makes the intentional choice to treat it as a shared shift queue, which is the correct mental model for a shared dock. The `custodian` column in each row lets the tech see who received the item and sanity-check that it's legitimate work.
 
 ## Architecture notes (re: future extensibility)
 

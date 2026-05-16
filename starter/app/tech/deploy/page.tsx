@@ -1,14 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { ScanInput } from "@/components/ScanInput";
 import { CameraScanInput } from "@/components/CameraScanInput";
 import { ScanFeedback } from "@/components/ScanFeedback";
 import { AssetCard } from "@/components/AssetCard";
+import { InQueue } from "@/components/InQueue";
 import { api } from "@/lib/api-client";
 import { getCurrentUserId } from "@/lib/auth";
 import { classifyError, classifyRouteError } from "@/lib/scan-error";
+import { parseLocationBarcode } from "@/lib/format";
 import type { Asset, Location } from "@/lib/types";
 
 type Step = "scan_tag" | "fill_location" | "result";
@@ -20,7 +23,7 @@ function isDeployLocationComplete(loc: Location): boolean {
   return !!(loc.site && loc.room && loc.rack && loc.ru);
 }
 
-export default function TechDeployPage() {
+function TechDeployContent() {
   const [step, setStep] = useState<Step>("scan_tag");
   const [scanMode, setScanMode] = useState<ScanMode>("keyboard");
   const [asset, setAsset] = useState<Asset | null>(null);
@@ -29,6 +32,14 @@ export default function TechDeployPage() {
   const [feedbackCode, setFeedbackCode] = useState("");
   const [result, setResult] = useState<Asset | null>(null);
   const [locationError, setLocationError] = useState("");
+  const [locScanOpen, setLocScanOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const tagFromUrl = useSearchParams().get("tag") ?? "";
+
+  useEffect(() => {
+    if (tagFromUrl) handleTagScan(tagFromUrl);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tagFromUrl]);
 
   async function handleTagScan(tag: string) {
     if (!/^C\d{7}$/.test(tag)) {
@@ -40,7 +51,7 @@ export default function TechDeployPage() {
     try {
       const found = await api.assets.get(tag);
       setAsset(found);
-      setLocation(l => ({ ...l, site: found.location.site ?? "" }));
+      setLocation(emptyLoc);
       setStep("fill_location");
       setFeedback("idle");
     } catch (err) {
@@ -80,6 +91,7 @@ export default function TechDeployPage() {
       setResult(data.asset);
       setStep("result");
       setFeedback("idle");
+      setRefreshKey(k => k + 1);
     } catch (err) {
       setFeedback("error");
       setFeedbackCode(classifyError(err));
@@ -96,7 +108,9 @@ export default function TechDeployPage() {
   }
 
   return (
-    <div className="max-w-lg space-y-6">
+    <div className="max-w-7xl">
+      <div className="lg:grid lg:grid-cols-[360px_1fr] lg:gap-8">
+      <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Deploy asset</h1>
         <p className="text-gray-500 text-sm mt-1">Scan the asset you're racking into service.</p>
@@ -122,7 +136,7 @@ export default function TechDeployPage() {
       )}
 
       {step === "fill_location" && asset && (() => {
-        const blocked = ["in_service", "rma_pending", "disposed"].includes(asset.state);
+        const blocked = ["in_service", "rma_pending", "disposed", "unreceived"].includes(asset.state);
         return (
         <form onSubmit={handleDeploy} className="space-y-4">
           <AssetCard asset={asset} heading="Asset to deploy" />
@@ -147,6 +161,13 @@ export default function TechDeployPage() {
               into the system.
             </div>
           )}
+          {asset.state === "unreceived" && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+              <strong>Not received yet.</strong> This asset hasn't entered the system.{" "}
+              <Link href="/tech/receive" className="underline font-medium">Go to Receive</Link>{" "}
+              to register it first, then come back to deploy it.
+            </div>
+          )}
           {asset.state === "disposed" && (
             <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
               <strong>This asset has been disposed.</strong> It can't be re-deployed. Double-check you scanned the right barcode.
@@ -161,7 +182,21 @@ export default function TechDeployPage() {
           )}
 
           <fieldset disabled={blocked} className={`space-y-3 ${blocked ? "opacity-40 pointer-events-none" : ""}`}>
-            <legend className="text-sm font-medium text-gray-700">Rack location <span className="text-red-500 text-xs font-normal">All fields required</span></legend>
+            <div className="flex items-center justify-between">
+              <legend className="text-sm font-medium text-gray-700">Rack location <span className="text-red-500 text-xs font-normal">All fields required</span></legend>
+              <button type="button" onClick={() => setLocScanOpen(o => !o)} className="text-xs text-blue-600 underline">
+                {locScanOpen ? "Enter manually" : "Scan location barcode"}
+              </button>
+            </div>
+            {locScanOpen && (
+              <CameraScanInput
+                label="Scan location barcode"
+                onScan={raw => {
+                  const parsed = parseLocationBarcode(raw);
+                  if (parsed) { setLocation(l => ({ ...l, ...parsed })); setLocScanOpen(false); }
+                }}
+              />
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Site <span className="text-red-500">*</span></label>
@@ -218,6 +253,25 @@ export default function TechDeployPage() {
           <button onClick={reset} className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 font-medium text-gray-700 hover:bg-gray-50 min-h-[44px]">Deploy another</button>
         </div>
       )}
+      </div>{/* end main column */}
+
+      <div className="mt-8 lg:mt-0">
+        <InQueue
+          filterState={["stored", "received"]}
+          nextStep="deploy"
+          refreshKey={refreshKey}
+          currentTag={asset?.asset_tag}
+        />
+      </div>
+      </div>{/* end grid */}
     </div>
+  );
+}
+
+export default function TechDeployPage() {
+  return (
+    <Suspense fallback={<div className="max-w-7xl animate-pulse h-96 rounded-lg bg-gray-100" />}>
+      <TechDeployContent />
+    </Suspense>
   );
 }

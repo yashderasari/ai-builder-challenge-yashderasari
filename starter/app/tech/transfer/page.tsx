@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ScanInput } from "@/components/ScanInput";
 import { CameraScanInput } from "@/components/CameraScanInput";
@@ -23,7 +23,8 @@ export default function TechTransferPage() {
   const [feedbackCode, setFeedbackCode] = useState("");
   const [result, setResult] = useState<Asset | null>(null);
 
-  const fromUser = getCurrentUserId();
+  const [fromUser, setFromUser] = useState("");
+  useEffect(() => { setFromUser(getCurrentUserId()); }, []);
 
   async function handleAssetScan(tag: string) {
     if (!/^C\d{7}$/.test(tag)) {
@@ -36,7 +37,8 @@ export default function TechTransferPage() {
       const found = await api.assets.get(tag);
       setAsset(found);
       setStep("scan_badge");
-      setFeedback(found.state === "disposed" ? "error" : "idle");
+      // disposed and unreceived can't be transferred — pre-block before the badge scan
+      setFeedback(["disposed", "unreceived"].includes(found.state) ? "error" : "idle");
     } catch (err) {
       setFeedback("error");
       setFeedbackCode(classifyError(err));
@@ -120,14 +122,17 @@ export default function TechTransferPage() {
 
       {/* Step 2: confirm asset, scan badge */}
       {step === "scan_badge" && asset && (() => {
-        const blocked = asset.state === "disposed";
+        const blocked = ["disposed", "unreceived"].includes(asset.state);
         return (
         <div className="space-y-4">
           <AssetCard asset={asset} heading="Transferring" />
 
           {blocked ? (
             <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-              <strong>This asset has been disposed.</strong> It can't be transferred. Double-check you scanned the right barcode.
+              {asset.state === "disposed"
+                ? <><strong>This asset has been disposed.</strong> It can't be transferred. Double-check you scanned the right barcode.</>
+                : <><strong>Not received yet.</strong> This asset hasn't entered the system — go to <Link href="/tech/receive" className="underline font-medium">Receive</Link> to register it first.</>
+              }
             </div>
           ) : (
             <>

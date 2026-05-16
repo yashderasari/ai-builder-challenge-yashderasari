@@ -5,7 +5,7 @@ import type { StoreScanInput } from "@/lib/types";
 // Server-side handler: calls the API store scan. If the asset was in_service
 // (de-racking), writes rack_location: null to facilities to remove the row.
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  const body = (await req.json()) as StoreScanInput & { from_state?: string };
+  const { from_state, ...body } = (await req.json()) as StoreScanInput & { from_state?: string };
   const client = createApiClient();
 
   let asset;
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const writebacks: string[] = [];
 
   // Only de-rack from facilities when moving out of in_service
-  if (body.from_state === "in_service") {
+  if (from_state === "in_service") {
     try {
       await client.mock.updateFacilities({ tagged_id: body.asset_tag, rack_location: null });
       writebacks.push("facilities");

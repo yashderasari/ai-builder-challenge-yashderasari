@@ -1,20 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { ScanInput } from "@/components/ScanInput";
 import { CameraScanInput } from "@/components/CameraScanInput";
 import { ScanFeedback } from "@/components/ScanFeedback";
 import { AssetCard } from "@/components/AssetCard";
+import { InQueue } from "@/components/InQueue";
 import { api } from "@/lib/api-client";
 import { getCurrentUserId } from "@/lib/auth";
 import { classifyError, classifyRouteError } from "@/lib/scan-error";
+import { parseLocationBarcode } from "@/lib/format";
 import type { Asset, Location } from "@/lib/types";
 
 type Step = "scan_tag" | "confirm_location" | "result";
 type ScanMode = "keyboard" | "camera";
 
-export default function TechStorePage() {
+function TechStoreContent() {
   const [step, setStep] = useState<Step>("scan_tag");
   const [scanMode, setScanMode] = useState<ScanMode>("keyboard");
   const [asset, setAsset] = useState<Asset | null>(null);
@@ -22,6 +25,14 @@ export default function TechStorePage() {
   const [feedback, setFeedback] = useState<"idle" | "loading" | "error">("idle");
   const [feedbackCode, setFeedbackCode] = useState("");
   const [result, setResult] = useState<Asset | null>(null);
+  const [locScanOpen, setLocScanOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const tagFromUrl = useSearchParams().get("tag") ?? "";
+
+  useEffect(() => {
+    if (tagFromUrl) handleTagScan(tagFromUrl);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tagFromUrl]);
 
   async function handleTagScan(tag: string) {
     if (!/^C\d{7}$/.test(tag)) {
@@ -34,7 +45,7 @@ export default function TechStorePage() {
       const found = await api.assets.get(tag);
       setAsset(found);
       // Pre-fill site from current location
-      setLocation({ site: found.location.site ?? "", room: null, row: null, rack: null, ru: null });
+      setLocation({ site: "", room: null, row: null, rack: null, ru: null });
       setStep("confirm_location");
       setFeedback("idle");
     } catch (err) {
@@ -71,6 +82,7 @@ export default function TechStorePage() {
       setResult(data.asset);
       setStep("result");
       setFeedback("idle");
+      setRefreshKey(k => k + 1);
     } catch (err) {
       setFeedback("error");
       setFeedbackCode(classifyError(err));
@@ -86,7 +98,9 @@ export default function TechStorePage() {
   }
 
   return (
-    <div className="max-w-lg space-y-6">
+    <div className="max-w-7xl">
+      <div className="lg:grid lg:grid-cols-[360px_1fr] lg:gap-8">
+      <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Store asset</h1>
         <p className="text-gray-500 text-sm mt-1">Scan the asset you're moving to storage.</p>
@@ -112,7 +126,7 @@ export default function TechStorePage() {
       )}
 
       {step === "confirm_location" && asset && (() => {
-        const blocked = ["disposed", "rma_pending", "unreceived"].includes(asset.state);
+        const blocked = ["disposed", "rma_pending", "unreceived", "stored"].includes(asset.state);
         return (
         <form onSubmit={handleStore} className="space-y-4">
           <AssetCard asset={asset} heading="Asset to store" />
@@ -138,17 +152,32 @@ export default function TechStorePage() {
           )}
 
           {asset.state === "stored" && (
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
-              <strong>Already in storage.</strong> This will move it to the new location you enter below.
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              <strong>Already in storage.</strong> Storage locations can't be changed directly — the state machine doesn't have a stored-to-stored path. If the location is wrong, ask your manager to correct it. If you're racking this into service, go to{" "}
+              <Link href="/tech/deploy" className="underline font-medium">Deploy</Link>.
             </div>
           )}
 
-          {!["disposed", "rma_pending", "unreceived"].includes(asset.state) && (
+          {!["disposed", "rma_pending", "unreceived", "stored"].includes(asset.state) && (
             <ScanFeedback state={feedback === "error" ? "error" : "idle"} errorCode={feedbackCode} />
           )}
 
           <fieldset disabled={blocked} className={`space-y-3 ${blocked ? "opacity-40 pointer-events-none" : ""}`}>
-            <legend className="text-sm font-medium text-gray-700">Storage location</legend>
+            <div className="flex items-center justify-between">
+              <legend className="text-sm font-medium text-gray-700">Storage location</legend>
+              <button type="button" onClick={() => setLocScanOpen(o => !o)} className="text-xs text-blue-600 underline">
+                {locScanOpen ? "Enter manually" : "Scan location barcode"}
+              </button>
+            </div>
+            {locScanOpen && (
+              <CameraScanInput
+                label="Scan location barcode"
+                onScan={raw => {
+                  const parsed = parseLocationBarcode(raw);
+                  if (parsed) { setLocation(l => ({ ...l, ...parsed })); setLocScanOpen(false); }
+                }}
+              />
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Site <span className="text-red-500">*</span></label>
@@ -194,9 +223,34 @@ export default function TechStorePage() {
               </div>
             </div>
           </div>
+          <Link
+            href={`/tech/deploy?tag=${result.asset_tag}`}
+            className="w-full rounded-lg border border-green-300 bg-green-50 px-4 py-3 text-sm font-medium text-green-800 hover:bg-green-100 text-center min-h-[44px] flex items-center justify-center"
+          >
+            Deploy this asset →
+          </Link>
           <button onClick={reset} className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 font-medium text-gray-700 hover:bg-gray-50 min-h-[44px]">Store another</button>
         </div>
       )}
+      </div>{/* end main column */}
+
+      <div className="mt-8 lg:mt-0">
+        <InQueue
+          filterState="received"
+          nextStep="store"
+          refreshKey={refreshKey}
+          currentTag={asset?.asset_tag}
+        />
+      </div>
+      </div>{/* end grid */}
     </div>
+  );
+}
+
+export default function TechStorePage() {
+  return (
+    <Suspense fallback={<div className="max-w-7xl animate-pulse h-96 rounded-lg bg-gray-100" />}>
+      <TechStoreContent />
+    </Suspense>
   );
 }

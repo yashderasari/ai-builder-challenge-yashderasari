@@ -4,7 +4,7 @@ import type { Asset, FacilitiesRecord, FinanceRecord } from "./types";
 // Per CONTEXT.md: three parent categories — Expected, Real drift, Ambiguous
 export type ReconcileRow = {
   asset_tag: string;
-  ops?: Pick<Asset, "state" | "location" | "model" | "manufacturer" | "custodian">;
+  ops?: Pick<Asset, "state" | "location" | "model" | "manufacturer" | "custodian" | "updated_at">;
   facilities?: Pick<FacilitiesRecord, "rack_location" | "last_observed">;
   finance?: Pick<FinanceRecord, "status" | "site" | "book_value_usd" | "capitalized_on">;
   detail: string;
@@ -31,15 +31,23 @@ export type ReconcileReport = {
 
 export const STALE_DAYS = 90;
 
+export function daysSince(iso: string): number {
+  return (Date.now() - new Date(iso).getTime()) / 86_400_000;
+}
+
 function opsRackString(asset: Asset): string {
   return [asset.location.site, asset.location.room, asset.location.row, asset.location.rack, asset.location.ru]
     .filter(Boolean)
     .join("/");
 }
 
-function daysSince(iso: string): number {
-  return (Date.now() - new Date(iso).getTime()) / 86_400_000;
-}
+const STATE_DESCRIPTION: Record<string, string> = {
+  received:    "sitting in receiving",
+  stored:      "moved to storage",
+  rma_pending: "sent for RMA repair",
+  disposed:    "marked as disposed",
+  unreceived:  "not yet received",
+};
 
 export async function buildReconcileReport(): Promise<ReconcileReport> {
   const client = createApiClient();
@@ -68,7 +76,7 @@ export async function buildReconcileReport(): Promise<ReconcileReport> {
 
     const row = (detail: string): ReconcileRow => ({
       asset_tag: asset.asset_tag,
-      ops: { state: asset.state, location: asset.location, model: asset.model, manufacturer: asset.manufacturer, custodian: asset.custodian },
+      ops: { state: asset.state, location: asset.location, model: asset.model, manufacturer: asset.manufacturer, custodian: asset.custodian, updated_at: asset.updated_at },
       facilities: fac ? { rack_location: fac.rack_location, last_observed: fac.last_observed } : undefined,
       finance: fin ? { status: fin.status, site: fin.site, book_value_usd: fin.book_value_usd, capitalized_on: fin.capitalized_on } : undefined,
       detail,
@@ -77,29 +85,61 @@ export async function buildReconcileReport(): Promise<ReconcileReport> {
     // Expected: facilities only tracks racked items
     const notTrackedByFacilities = ["received", "stored", "disposed", "unreceived", "rma_pending"].includes(asset.state);
     if (notTrackedByFacilities && !fac) {
-      report.expected.not_in_facilities.push(row(`${asset.state} — facilities only tracks racked items`));
+      const facilityNote: Record<string, string> = {
+        received:    "In receiving — not racked yet",
+        stored:      "In storage — not racked",
+        rma_pending: "Out for repair — not tracked",
+        disposed:    "Disposed — no longer tracked",
+        unreceived:  "Not yet received into ops",
+      };
+      report.expected.not_in_facilities.push(row(facilityNote[asset.state] ?? "Not currently racked"));
       continue;
+    }
+
+    // Real drift: asset is no longer racked in ops, but facilities still has it at a rack position
+    if (notTrackedByFacilities && fac) {
+      const stateDesc = STATE_DESCRIPTION[asset.state] ?? "in a non-racked state";
+      if (asset.state === "disposed") {
+        report.real_drift.location_mismatch.push(
+          row("Disposed but still racked in facilities"),
+        );
+      } else {
+        report.real_drift.location_mismatch.push(
+          row("De-rack step skipped in facilities"),
+        );
+      }
+      // Don't continue — still check finance conflict below
     }
 
     // Ambiguous: in_service but nothing in facilities
     if (asset.state === "in_service" && !fac) {
-      report.ambiguous.missing_from_facilities.push(row("Asset is in service but has no facilities record — may need a deploy scan"));
+      report.ambiguous.missing_from_facilities.push(row("In service, no facilities record"));
       continue;
     }
 
-    // Real drift: location mismatch
+    // Real drift: location mismatch (in_service assets only)
     if (asset.state === "in_service" && fac) {
       const opsRack = opsRackString(asset);
-      if (fac.rack_location && asset.location.rack && !fac.rack_location.includes(asset.location.rack)) {
-        report.real_drift.location_mismatch.push(row(`Ops rack: ${asset.location.rack} — Facilities: ${fac.rack_location}`));
-      } else if (fac.rack_location && opsRack && !fac.rack_location.startsWith(asset.location.site ?? "")) {
-        report.real_drift.location_mismatch.push(row(`Ops: ${opsRack} — Facilities: ${fac.rack_location}`));
+
+      // Rack-level mismatch: different rack entirely
+      const rackMismatch = fac.rack_location && asset.location.rack && !fac.rack_location.includes(asset.location.rack);
+      // RU-level mismatch: same rack but different rack unit
+      const ruMismatch = !rackMismatch && fac.rack_location && asset.location.ru && !fac.rack_location.includes(asset.location.ru);
+      // Site-level mismatch: different building
+      const siteMismatch = !rackMismatch && !ruMismatch && fac.rack_location && opsRack && !fac.rack_location.startsWith(asset.location.site ?? "");
+
+      if (rackMismatch) {
+        report.real_drift.location_mismatch.push(row(`Rack mismatch: ${asset.location.rack} vs facilities`));
+      } else if (ruMismatch) {
+        report.real_drift.location_mismatch.push(row(`Rack unit mismatch: ${asset.location.ru} vs facilities`));
+      } else if (siteMismatch) {
+        report.real_drift.location_mismatch.push(row(`Site mismatch: ops vs facilities`));
       }
 
       // Ambiguous: stale facilities observation
       if (daysSince(fac.last_observed) > STALE_DAYS) {
         report.ambiguous.stale_observation.push(
-          row(`Facilities record is ${Math.floor(daysSince(fac.last_observed))} days old while asset is active in ops`),
+          row(`Facilities record ${Math.floor(daysSince(fac.last_observed))}d old, asset active`),
         );
       }
     }
@@ -107,7 +147,9 @@ export async function buildReconcileReport(): Promise<ReconcileReport> {
     // Ambiguous: state/finance conflict
     if (fin && (asset.state === "disposed" || asset.state === "rma_pending") && fin.status === "capitalized") {
       report.ambiguous.state_finance_conflict.push(
-        row(`Ops is ${asset.state} but finance still shows ${fin.status} — may be a billing lag or missed write`),
+        row(asset.state === "disposed"
+          ? "Disposed, still on finance books"
+          : "Out for repair, still on the books"),
       );
     }
   }
@@ -118,7 +160,7 @@ export async function buildReconcileReport(): Promise<ReconcileReport> {
       report.real_drift.ghost_in_facilities.push({
         asset_tag: fac.tagged_id,
         facilities: { rack_location: fac.rack_location, last_observed: fac.last_observed },
-        detail: "Tag in facilities but unknown to ops — may have been disposed without scanning",
+        detail: "Ghost in facilities, unknown to ops",
       });
     }
   }
@@ -129,7 +171,7 @@ export async function buildReconcileReport(): Promise<ReconcileReport> {
       report.real_drift.ghost_in_finance.push({
         asset_tag: fin.tag,
         finance: { status: fin.status, site: fin.site, book_value_usd: fin.book_value_usd, capitalized_on: fin.capitalized_on },
-        detail: "Tag in finance but unknown to ops — investigate before marking retired",
+        detail: "Ghost in finance, unknown to ops",
       });
     }
   }

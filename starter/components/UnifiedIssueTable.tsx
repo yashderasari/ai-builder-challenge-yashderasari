@@ -58,25 +58,25 @@ function SystemCell({ flag, severity }: { flag: SystemFlag; severity: IssueSever
 }
 
 function getIssueExplanation(text: string): string | null {
-  if (text.startsWith("Rack mismatch") || text.startsWith("Rack unit mismatch") || text.startsWith("Site mismatch")) {
+  if (text.startsWith("Location conflict")) {
     return "Operations and Facilities agree this asset is racked, but disagree on where. Someone moved it without scanning. Send a tech to verify the actual location and rescan.";
   }
-  if (text === "Disposed but still racked in facilities" || text === "De-rack step skipped in facilities") {
+  if (text === "Disposed in Operations — Facilities still shows it as racked" || text === "Removed from Operations — Facilities wasn't updated") {
     return "Operations shows this asset as stored, out for repair, or disposed — but Facilities still has it at a rack position. The de-rack scan was missed. Facilities needs to remove the record; no physical move required.";
   }
-  if (text === "Ghost in facilities, unknown to ops") {
+  if (text === "Facilities has a record — Operations doesn't") {
     return "Facilities has a rack record for this tag, but Operations has never seen it. Could be an unscanned disposal, a data entry error, or a legacy asset. Investigate with the Facilities team before taking action.";
   }
-  if (text === "Ghost in finance, unknown to ops") {
+  if (text === "Finance has a record — Operations doesn't") {
     return "Finance has a purchase record for this tag, but Operations has never seen it. Could be a new delivery not yet received, or a manual entry error. Investigate with Finance before taking action.";
   }
-  if (text === "In service, no facilities record") {
+  if (text === "Active in Operations — no Facilities scan on record") {
     return "Operations shows this asset as deployed and in use, but Facilities has no rack entry. May be a deploy scan that didn't write through. If it's physically racked, a tech can rescan to create the record.";
   }
-  if (text.startsWith("Facilities record") && text.includes("old, asset active")) {
+  if (text.startsWith("Facilities last scanned")) {
     return "Facilities hasn't logged this asset in over 90 days, but Operations shows it as active. It may still be in place and just not scanned recently, or it may have moved. Have a tech verify and rescan to refresh the record.";
   }
-  if (text === "Disposed, still on finance books" || text === "Out for repair, still on the books") {
+  if (text.startsWith("Marked disposed") || text.startsWith("Out for repair — Finance")) {
     return "Operations has marked this asset as disposed or out for repair, but Finance still carries it as active. No field action needed — Finance should close or adjust the record on their end.";
   }
   return null;

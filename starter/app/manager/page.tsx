@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api-client";
 import type { Asset, AssetState } from "@/lib/types";
 import { StateBadge } from "@/components/StateBadge";
@@ -23,15 +24,32 @@ function lastAction(state: string): string {
 
 const STATES: AssetState[] = ["received", "stored", "in_service", "rma_pending", "disposed", "unreceived"];
 
-export default function ManagerPage() {
+function ManagerContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [stateFilter, setStateFilter] = useState("");
-  const [siteFilter, setSiteFilter] = useState("");
-  const [search, setSearch] = useState("");
-  const [recentOnly, setRecentOnly] = useState(false);
-  const [page, setPage] = useState(1);
+
+  const stateFilter = searchParams.get("state") ?? "";
+  const siteFilter = searchParams.get("site") ?? "";
+  const search = searchParams.get("q") ?? "";
+  const recentOnly = searchParams.get("recent") === "1";
+  const page = Number(searchParams.get("page") ?? "1");
+
+  function updateParams(updates: Record<string, string>) {
+    const p = new URLSearchParams(searchParams.toString());
+    for (const [k, v] of Object.entries(updates)) {
+      if (v) p.set(k, v); else p.delete(k);
+    }
+    router.replace(`?${p.toString()}`, { scroll: false });
+  }
+
+  const setStateFilter = (v: string) => updateParams({ state: v, page: "" });
+  const setSiteFilter = (v: string) => updateParams({ site: v, page: "" });
+  const setSearch = (v: string) => updateParams({ q: v, page: "" });
+  const setRecentOnly = (v: boolean) => updateParams({ recent: v ? "1" : "", page: "" });
+  const setPage = (v: number) => updateParams({ page: v === 1 ? "" : String(v) });
 
   useEffect(() => {
     api.assets.list()
@@ -82,11 +100,7 @@ export default function ManagerPage() {
   const rmaPending = assets.filter(a => a.state === "rma_pending").length;
 
   function clearFilters() {
-    setStateFilter("");
-    setSiteFilter("");
-    setSearch("");
-    setRecentOnly(false);
-    setPage(1);
+    router.replace("?", { scroll: false });
   }
 
   if (loading) {
@@ -139,7 +153,7 @@ export default function ManagerPage() {
             return (
               <button
                 key={state}
-                onClick={() => { setStateFilter(f => f === state ? "" : state); setPage(1); }}
+                onClick={() => setStateFilter(stateFilter === state ? "" : state)}
                 className={`flex-1 rounded-lg border px-3 py-2 text-center hover:opacity-80 transition-opacity ${highlight[state]}`}
               >
                 <p className="text-lg font-bold leading-none">{count}</p>
@@ -155,13 +169,13 @@ export default function ManagerPage() {
         <input
           type="search"
           value={search}
-          onChange={e => { setSearch(e.target.value); setPage(1); }}
+          onChange={e => setSearch(e.target.value)}
           placeholder="Search by tag, serial, model…"
           className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-600 focus:outline-none flex-1 min-w-0"
         />
         {recentActivity > 0 && (
           <button
-            onClick={() => { setRecentOnly(r => !r); setPage(1); }}
+            onClick={() => setRecentOnly(!recentOnly)}
             className={`shrink-0 rounded-lg border px-4 py-2 text-sm whitespace-nowrap hover:bg-slate-100 ${recentOnly ? "bg-slate-100 border-slate-400 text-slate-900 font-medium" : "border-slate-200 bg-slate-50 text-slate-700"}`}
           >
             <span className="font-semibold">{recentActivity}</span> asset{recentActivity !== 1 ? "s" : ""} updated in the last 24 hours
@@ -170,7 +184,7 @@ export default function ManagerPage() {
         {sites.length > 0 && (
           <select
             value={siteFilter}
-            onChange={e => { setSiteFilter(e.target.value); setPage(1); }}
+            onChange={e => setSiteFilter(e.target.value)}
             className="shrink-0 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-600 focus:outline-none bg-white"
           >
             <option value="">All sites</option>
@@ -235,7 +249,7 @@ export default function ManagerPage() {
         <div className="flex items-center justify-between text-sm">
           <button
             disabled={currentPage === 1}
-            onClick={() => setPage(p => p - 1)}
+            onClick={() => setPage(currentPage - 1)}
             className="rounded-lg border border-gray-300 px-3 py-1.5 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             ← Previous
@@ -243,7 +257,7 @@ export default function ManagerPage() {
           <span className="text-gray-500">Page {currentPage} of {totalPages}</span>
           <button
             disabled={currentPage === totalPages}
-            onClick={() => setPage(p => p + 1)}
+            onClick={() => setPage(currentPage + 1)}
             className="rounded-lg border border-gray-300 px-3 py-1.5 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Next →
@@ -251,5 +265,13 @@ export default function ManagerPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ManagerPage() {
+  return (
+    <Suspense fallback={<div className="space-y-6 max-w-5xl animate-pulse"><div className="h-8 w-32 bg-gray-100 rounded" /><div className="h-24 bg-gray-100 rounded-lg" /></div>}>
+      <ManagerContent />
+    </Suspense>
   );
 }

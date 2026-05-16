@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { relativeTime } from "@/lib/format";
 
@@ -275,12 +276,24 @@ function TableContent({ rows, filter, expanded, search, sortKey, sortDir, onSort
   );
 }
 
-export function UnifiedIssueTable({ rows }: { rows: UnifiedRow[] }) {
-  const [filter, setFilter] = useState<SystemFilter>("all");
+function UnifiedIssueTableInner({ rows }: { rows: UnifiedRow[] }) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  const filter = (searchParams.get("rf") ?? "all") as SystemFilter;
+  const search = searchParams.get("rq") ?? "";
   const [expanded, setExpanded] = useState(false);
-  const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("issues");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  function updateParam(key: string, value: string) {
+    const p = new URLSearchParams(searchParams.toString());
+    if (value && value !== "all") p.set(key, value); else p.delete(key);
+    router.replace(`?${p.toString()}`, { scroll: false });
+  }
+
+  const setFilter = (f: SystemFilter) => updateParam("rf", f);
+  const setSearch = (q: string) => updateParam("rq", q);
 
   function handleSort(key: SortKey) {
     if (key === sortKey) setSortDir(d => d === "asc" ? "desc" : "asc");
@@ -406,5 +419,13 @@ export function UnifiedIssueTable({ rows }: { rows: UnifiedRow[] }) {
         </div>
       </div>
     </div>
+  );
+}
+
+export function UnifiedIssueTable({ rows }: { rows: UnifiedRow[] }) {
+  return (
+    <Suspense fallback={<div className="animate-pulse h-48 rounded-lg bg-gray-100" />}>
+      <UnifiedIssueTableInner rows={rows} />
+    </Suspense>
   );
 }

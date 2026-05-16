@@ -1,0 +1,8 @@
+[phases.install]
+cmds = ["pnpm install --frozen-lockfile"]
+
+[phases.build]
+cmds = ["pnpm --filter @asset-tracking/api build"]
+
+[start]
+cmd = "pnpm --filter @asset-tracking/api start"

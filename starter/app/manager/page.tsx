@@ -105,10 +105,29 @@ function ManagerContent() {
 
   if (loading) {
     return (
-      <div className="space-y-6 max-w-5xl">
-        <h1 className="text-2xl font-bold">Assets</h1>
-        <div className="animate-pulse space-y-3">
-          {[...Array(5)].map((_, i) => <div key={i} className="h-12 rounded-lg bg-gray-100" />)}
+      <div className="space-y-6 max-w-5xl animate-pulse">
+        <div className="flex items-center justify-between">
+          <div className="h-8 w-24 bg-gray-200 rounded" />
+          <div className="h-8 w-40 bg-gray-100 rounded-lg" />
+        </div>
+        {/* State filter strip */}
+        <div className="flex gap-2">
+          {[...Array(5)].map((_, i) => <div key={i} className="flex-1 h-14 rounded-lg bg-gray-100" />)}
+        </div>
+        {/* Search bar */}
+        <div className="h-10 rounded-lg bg-gray-100" />
+        {/* Table */}
+        <div className="rounded-lg border overflow-hidden">
+          <div className="bg-gray-50 border-b h-10" />
+          {[...Array(8)].map((_, i) => (
+            <div key={i} className="flex items-center gap-4 px-4 py-3 border-b last:border-0">
+              <div className="w-24 h-4 bg-gray-200 rounded" />
+              <div className="flex-1 h-4 bg-gray-100 rounded" />
+              <div className="w-20 h-6 bg-gray-100 rounded-full" />
+              <div className="flex-1 h-4 bg-gray-100 rounded hidden md:block" />
+              <div className="w-20 h-4 bg-gray-100 rounded hidden md:block" />
+            </div>
+          ))}
         </div>
       </div>
     );

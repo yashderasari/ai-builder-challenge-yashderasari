@@ -103,10 +103,13 @@ function getAssetIssues(
 
 export default async function ManagerAssetDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ tag: string }>;
+  searchParams: Promise<{ from?: string }>;
 }): Promise<React.ReactElement> {
-  const { tag } = await params;
+  const [{ tag }, { from }] = await Promise.all([params, searchParams]);
+  const reconcileHref = `/manager/reconcile${from ? `?${decodeURIComponent(from)}` : ""}`;
   const client = createApiClient();
 
   let asset: Asset | null = null;
@@ -143,7 +146,7 @@ export default async function ManagerAssetDetailPage({
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <Link href="/manager" className="hover:text-gray-800">Assets</Link>
           <span>›</span>
-          <Link href="/manager/reconcile" className="hover:text-gray-800">Reconciliation</Link>
+          <Link href={reconcileHref} className="hover:text-gray-800">Reconciliation</Link>
           <span>›</span>
           <span className="font-mono text-gray-800">{tag}</span>
         </div>
@@ -216,7 +219,7 @@ export default async function ManagerAssetDetailPage({
         )}
 
         <div className="text-sm text-gray-500">
-          <Link href="/manager/reconcile" className="text-blue-600 hover:underline">← Back to reconciliation report</Link>
+          <Link href={reconcileHref} className="text-blue-600 hover:underline">← Back to reconciliation report</Link>
         </div>
       </div>
     );
@@ -304,6 +307,8 @@ export default async function ManagerAssetDetailPage({
     <div className="max-w-5xl space-y-8">
       <div className="flex items-center gap-2 text-sm text-gray-500">
         <Link href="/manager" className="hover:text-gray-800">Assets</Link>
+        <span>›</span>
+        <Link href={reconcileHref} className="hover:text-gray-800">Reconciliation</Link>
         <span>›</span>
         <span className="font-mono text-gray-800">{tag}</span>
       </div>

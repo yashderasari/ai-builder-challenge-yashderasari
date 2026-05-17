@@ -27,13 +27,18 @@ Asset list with client-side pagination (25/page), filter by state + site, full-t
 
 **Three-way reconciliation** (`/manager/reconcile`)
 
-Server-side join at `app/api/reconcile/route.ts` pulls ops, facilities, and finance, then classifies differences into three parent categories per the system's design (CONTEXT.md):
+Server-side full outer join at `app/api/reconcile/route.ts` unions all tags across ops, facilities, and finance — including ghost tags that exist in only one external system. Every tag gets one joined record; categorization happens after the join, not during lookups.
 
-- **Expected** — scope differences (stored item not in facilities). Not a problem.
-- **Real drift** — genuine disagreements (ghost tags, location mismatch). Action needed.
-- **Ambiguous** — needs a human (disposed-but-capitalized, stale observation). Review before acting.
+Issues are sorted into four severity tiers, each clickable as a filter:
 
-Each issue row carries a hover tooltip with a plain-English explanation — what happened, who needs to act, and what they should do — written for a non-technical asset manager who runs this every Monday. The asset detail page (`/manager/assets/[tag]`) surfaces the same explanations inline, without requiring a hover, alongside the identity card.
+- **Action needed** — two systems directly conflict (ghost in finance, location mismatch, disposed-but-still-capitalized, received asset with no Finance procurement trail)
+- **Needs review** — likely timing or process gaps (stale Facilities scan, rma_pending-but-still-capitalized, Facilities scan newer than Ops state)
+- **Unaudited** — physically on-premises but unverifiable through Facilities (`received`, `stored`); Finance gaps for assets Ops knows about
+- **Expected** — gaps that are correct by design (`rma_pending`, `disposed`, `unreceived` not tracked by Facilities)
+
+Finance status is cross-checked against Ops state: `disposed` should be `retired`, `rma_pending` should be `impaired`, `received`/`stored` with no Finance record at all is Action needed (hardware on-premises with no procurement trail). `rma_pending` + Finance `capitalized` is still an asset on the books — correct behavior since it's coming back.
+
+Each issue row carries a hover tooltip with plain-English "Possible explanations" — two "Maybe..." causes and one action item — written for a non-technical asset manager. The asset detail page surfaces the same explanations inline alongside the identity card, and preserves the active reconcile filter state when you navigate back via the breadcrumb.
 
 **Write-back to facilities and finance**
 
@@ -57,19 +62,21 @@ Deploy → POST to facilities (set rack location) + finance (capitalize). Store 
 
 The brief says to "decide where the writes live" for facilities and finance. The easy path is firing them from the browser after a successful scan response — the proxy already handles the token, so it's not a security issue per se. I put them in server-side route handlers (`app/api/scans/deploy`, `app/api/scans/store`) instead. The reason: doing all three writes (ops scan + facilities + finance) in one server round-trip means partial failures are visible in one place, the logic is testable without a browser, and the reconcile report can trust that a successful deploy response means all three systems were updated. The downside is an extra network hop from browser → Next.js → API, but the tradeoff is clearly worth it here.
 
-**2. Explicit scan mode toggle vs. auto-detect**
+**2. Reconcile display: severity-first with cause in the detail, not cause-first**
 
-The brief says both USB scanner and phone camera flows should "feel native." The tempting path is auto-detecting: if the device has no physical keyboard (mobile), switch to camera automatically. I kept it as an explicit toggle per page instead. Auto-detection based on `navigator.maxTouchPoints` or user-agent is unreliable — a tablet with a paired Bluetooth scanner would get the wrong default, and a tech switching between workstations mid-shift shouldn't have the UI change under them. Explicit is predictable, and predictable matters at 11pm in a dock bay.
+My first instinct was to group rows by cause (ghost / missing / location mismatch / stale / state-finance conflict) — each bucket would have exactly one action associated with it. I switched to severity-first (Action needed / Needs review / Unaudited / Expected) because a manager scanning the page on a Monday morning wants to know urgency before cause. The cause is surfaced per-row in the Issues column and in the hover tooltip, so nothing is hidden — you just get triage order for free. The four severity cards double as filters, so a manager can say "show me only the things Finance needs to act on" by clicking Needs review and filtering by the Finance column.
 
-**3. Reconcile categories: cause-based vs. severity-based**
+**4. No KPI dashboard for asset value**
 
-My first instinct was to sort by severity (critical / needs-review / expected). Every diff tool does this. I switched to cause-based buckets (ghost / missing / location mismatch / stale / state-finance conflict) because severity hides the "why," and the "why" is what tells a manager whether to send a tech to the rack or call finance. A "critical" label on a disposed-but-capitalized asset and a "critical" label on a ghost in facilities would both be red but require completely different responses. Cause-based buckets mean each bucket has exactly one action associated with it.
+`book_value_usd` is available on every Finance record and it was tempting to show a "Total portfolio value" card at the top of the manager view. I left it out. Finance has stale `capitalized` records for disposed assets, missing records for some received assets, and no depreciation adjustments — so any sum would look authoritative but be built on unreconciled data. The only number you could display with confidence is the sum for the 704 verified-clean assets, but even that reflects intake value, not current value. Showing a confident financial KPI on a dashboard whose entire purpose is to surface data you can't fully trust would undermine the point of the tool.
 
 ## Pushback on the brief
 
 **"Three scan endpoints (receive, store, deploy)"** — The brief's "How this works" section counts three scan endpoints, but the API has four: `receive`, `store`, `deploy`, and `transfer`. The brief's own "What to build" section correctly requires all four. The count in the summary is off by one.
 
 **"The happy-path is a 10-step smoke test"** — The table header in the brief says 10 steps; the actual checklist has 11 (the last one covers mobile viewport). Not a problem in practice, but worth noting since we were told to count.
+
+**Reconcile join is fully in-memory** — all three sources are fetched in full on every `/api/reconcile` call, unioned by tag, and categorized in the application layer. No filtering happens before the join. For 1,000 assets this is fine — `/v1/assets` returns all records with no pagination and the brief is designed around that. At real scale this would be the first thing to change: push the join and filters down to the database, paginate before the data hits the application layer, and cache the report rather than recomputing it on every request.
 
 **"Two static mocks for facilities and finance"** — The mocks accept POSTs and persist changes in-memory until `/v1/reset` or server restart. They're not static — they're mutable in-memory overlays on top of the seeded baseline. This is the right design for the challenge (otherwise write-back would be untestable), but "static" is the wrong word.
 

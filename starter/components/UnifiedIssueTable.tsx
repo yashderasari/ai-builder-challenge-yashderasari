@@ -383,13 +383,13 @@ function TableContent({ rows, filter, expanded, search, sortKey, sortDir, page, 
     <>
     <table className="w-full text-sm">
       <colgroup>
-        <col style={{ width: "130px" }} />
         <col style={{ width: "110px" }} />
-        <col />
-        <col style={{ width: "80px" }} />
-        <col style={{ width: "80px" }} />
-        <col style={{ width: "80px" }} />
-        <col style={{ width: "160px" }} />
+        <col style={{ width: "100px" }} />
+        <col style={{ width: "140px" }} />
+        <col style={{ width: "60px" }} />
+        <col style={{ width: "75px" }} />
+        <col style={{ width: "65px" }} />
+        <col style={{ width: "140px" }} />
         <col />
       </colgroup>
       <thead className="bg-white border-b">
@@ -587,16 +587,17 @@ function UnifiedIssueTableInner({ rows }: { rows: UnifiedRow[] }) {
   }
 
   const controls = (
-    <div className="flex items-center gap-3 w-full">
+    <div className="flex flex-wrap items-center gap-2 w-full">
       <input
         type="search"
         value={search}
         onChange={e => setSearch(e.target.value)}
         placeholder="Search by tag, model, issue…"
         className="flex-1 min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-700 focus:border-blue-500 focus:outline-none"
+        style={{ minWidth: "120px" }}
       />
       {filter !== "all" && clearFilterBtn()}
-      <div className="flex items-center gap-3 shrink-0 text-xs text-gray-500">
+      <div className="hidden sm:flex items-center gap-3 shrink-0 text-xs text-gray-500">
         <span><span className="text-red-500 font-bold">⚠</span> real drift</span>
         <span><span className="text-amber-500 font-bold">⚠</span> review</span>
         <span><span className="text-gray-300 font-medium">—</span> no record</span>

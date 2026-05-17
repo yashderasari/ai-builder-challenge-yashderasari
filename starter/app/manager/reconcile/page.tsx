@@ -142,7 +142,7 @@ export default async function ManagerReconcilePage({
       </div>
 
       {/* Summary cards — click to filter the table */}
-      <div className={`grid gap-4 ${hideExpected ? "grid-cols-3" : "grid-cols-4"}`}>
+      <div className={`grid gap-3 grid-cols-2 ${hideExpected ? "sm:grid-cols-3" : "sm:grid-cols-4"}`}>
         {([
           { key: "real",      label: "Action needed",  sub: "Two systems directly conflict",       active: "border-red-400 bg-red-100",      inactive: "border-red-200 bg-red-50",      count: realCount,      textBold: "text-red-800",    textSub: "text-red-500" },
           { key: "ambiguous", label: "Needs review",   sub: "Likely timing or process gaps",      active: "border-yellow-400 bg-yellow-100", inactive: "border-yellow-200 bg-yellow-50", count: ambiguousCount, textBold: "text-yellow-800", textSub: "text-yellow-600" },

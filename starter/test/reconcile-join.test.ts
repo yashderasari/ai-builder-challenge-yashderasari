@@ -219,7 +219,7 @@ describe("buildReconcileReport — join logic", () => {
     const tags = report.ambiguous.facilities_newer_than_ops.map(r => r.asset_tag);
     expect(tags).toContain("C0000109");
     const row = report.ambiguous.facilities_newer_than_ops.find(r => r.asset_tag === "C0000109")!;
-    expect(row.detail).toMatch(/disposed/i);
+    expect(row.detail).toBe("Disposed but still showing as racked");
   });
 
   it("detects rma_pending asset still racked in facilities (C0000108) — ambiguous because fac scan is newer than ops", () => {
@@ -227,14 +227,14 @@ describe("buildReconcileReport — join logic", () => {
     const tags = report.ambiguous.facilities_newer_than_ops.map(r => r.asset_tag);
     expect(tags).toContain("C0000108");
     const row = report.ambiguous.facilities_newer_than_ops.find(r => r.asset_tag === "C0000108")!;
-    expect(row.detail).toMatch(/repair/i);
+    expect(row.detail).toBe("Out for repair, still showing as racked");
   });
 
   it("detects rack unit mismatch for in_service asset (C0000110)", () => {
     const tags = report.real_drift.location_mismatch.map(r => r.asset_tag);
     expect(tags).toContain("C0000110");
     const row = report.real_drift.location_mismatch.find(r => r.asset_tag === "C0000110")!;
-    expect(row.detail).toMatch(/slot/i);
+    expect(row.detail).toBe("Slot mismatch — systems disagree");
   });
 
   it("does not flag clean in_service assets as location mismatch", () => {
@@ -262,7 +262,7 @@ describe("buildReconcileReport — join logic", () => {
     const tags = report.real_drift.ghost_in_finance.map(r => r.asset_tag);
     expect(tags).toContain("C0000109");
     const row = report.real_drift.ghost_in_finance.find(r => r.asset_tag === "C0000109")!;
-    expect(row.detail).toMatch(/disposed/i);
+    expect(row.detail).toBe("Disposed — Finance still active");
   });
 
   it("detects rma_pending asset still capitalized in finance (C0000108)", () => {

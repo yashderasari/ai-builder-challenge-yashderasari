@@ -92,98 +92,91 @@ function IssueDot({ severity }: { severity: IssueSeverity }) {
 }
 
 function getIssueExplanation(text: string): string[] | null {
-  if (text.startsWith("Location conflict"))
+  if (text === "Rack location mismatch" || text === "Slot mismatch — systems disagree" || text === "Building mismatch between systems")
     return [
       "Maybe the asset was moved to a different rack without a rescan",
       "Maybe one system has a data entry error on the rack or slot",
       "Send a tech to verify the physical location and rescan to correct both systems",
     ];
-  if (text === "Disposed in Operations — Facilities still shows it as racked" || text === "Removed from Operations — Facilities wasn't updated")
+  if (text === "Disposed — Facilities record not cleared" || text === "Removed — Facilities record not cleared")
     return [
       "Maybe the de-rack scan was missed when the asset was removed",
       "Maybe the state change in Ops was recorded before the physical move happened",
       "No physical action needed — ask Facilities to remove the rack record",
     ];
-  if (text === "Physically racked with no record in Operations or Finance — untracked asset with no procurement or intake history")
+  if (text === "Racked with no record anywhere")
     return [
-      "Maybe the asset was deployed completely off-books without a receive scan or PO",
+      "Maybe the asset was deployed off-books without a receive scan or PO",
       "Maybe Facilities mis-scanned a tag that belongs to a different asset",
       "Go to the rack position Facilities recorded and verify what is physically there",
     ];
-  if (text === "Physically racked but never received into Operations — Finance raised a PO but the receive scan was skipped")
+  if (text === "Racked but never formally received")
     return [
       "Maybe someone bypassed the intake step and deployed directly from the dock",
       "Maybe the receive scan was done on the wrong tag",
       "Formally receive this asset in Operations to establish its audit trail",
     ];
-  if (text === "Physically racked with no Operations record — Finance has it capitalized but Ops has never seen it")
+  if (text === "Racked — Finance has it, Ops doesn't")
     return [
       "Maybe the asset was deployed without going through the Ops intake process",
       "Maybe it was received under a different tag and retagged without an update",
       "Investigate how it reached the rack without an Ops record, then create one",
     ];
-  if (text === "Facilities has a record — Operations doesn't")
+  if (text === "Finance has it, Ops doesn't")
     return [
-      "Maybe the asset was disposed or decommissioned without a proper Ops scan",
-      "Maybe it's a legacy asset that predates the current tracking system",
-      "Maybe Facilities mis-scanned a tag — verify with the Facilities team before acting",
+      "Maybe the delivery hasn't been received into Ops yet",
+      "Maybe the PO was raised for an asset that was never actually delivered",
+      "Verify with Finance — it may have been entered manually without going through intake",
     ];
-  if (text === "No Finance record — asset is physically on-premises in Operations but Finance has no procurement entry")
+  if (text === "On-premises — no Finance record")
     return [
       "Maybe the asset was received without a PO or the PO was raised under a different tag",
       "Maybe Finance entry was created but linked to the wrong asset tag",
       "Hardware is physically present with no paper trail — Finance must investigate and create a record",
     ];
-  if (text === "Finance has a record — Operations doesn't")
-    return [
-      "Maybe the delivery hasn't been received into Ops yet",
-      "Maybe the PO was raised for an asset that was never actually delivered",
-      "Maybe it was manually entered in Finance without going through intake — verify with Finance",
-    ];
-  if (text === "Active in Operations — no Facilities scan on record")
+  if (text === "Deployed — no Facilities scan on record")
     return [
       "Maybe the deploy scan didn't write through to Facilities",
       "Maybe the asset is racked but was never scanned by the Facilities team",
       "Send a tech to physically verify and rescan to create the Facilities record",
     ];
-  if (text.startsWith("Stored in Operations") || text.startsWith("In receiving"))
+  if (text.startsWith("In storage") || text.startsWith("In receiving"))
     return [
-      "Maybe the asset is physically present but Facilities only audits racked equipment",
+      "Facilities only audits racked equipment — this asset isn't racked yet",
       "Maybe it was moved internally without a system update",
       "No Facilities audit is possible until the asset is deployed to a rack",
     ];
-  if (text.startsWith("Facilities last scanned"))
+  if (text.startsWith("Facilities scan") && text.endsWith("days old"))
     return [
       "Maybe the asset is still in place and just hasn't been scanned recently",
       "Maybe it was moved or removed without a rescan",
       "Have a tech verify the rack position and rescan to refresh the Facilities record",
     ];
-  if (text === "Disposed in Operations — Finance still shows it as active, should be retired")
+  if (text === "Disposed — Finance still active")
     return [
       "Maybe Finance wasn't notified when the asset was disposed",
       "Maybe the disposal was recorded in Ops but the Finance write-off was never processed",
       "No field action needed — Finance must retire this asset to close the books",
     ];
-  if (text === "Out for repair — Finance has already retired it, but Operations expects it back")
+  if (text === "Finance retired it — Ops expects return")
     return [
       "Maybe Finance prematurely wrote off the asset before the RMA outcome was known",
       "Maybe the wrong asset tag was retired in Finance",
       "Finance and Ops need to align — if the asset is returning, Finance must reverse the retirement",
     ];
-  if (text === "Disposed in Operations — Finance marked it impaired but has not retired it yet" ||
-      text === "Out for repair — Finance still shows it as active, should be marked impaired")
+  if (text === "Disposed — Finance not fully updated" || text === "Out for repair — Finance not updated")
     return [
       "Maybe Finance hasn't processed the status update from Operations yet",
       "Maybe the notification between systems was missed or delayed",
       "No field action needed — ask Finance to update the record to reflect current state",
     ];
-  if (text.startsWith("Latest Facilities scan conflicts with last Ops update — disposed"))
+  if (text === "Disposed but still showing as racked")
     return [
       "Maybe the disposal was recorded against the wrong asset tag",
       "Maybe Facilities mis-scanned a neighboring asset at that rack position",
       "A disposed asset cannot physically be racked — send a tech to verify immediately",
     ];
-  if (text.startsWith("Latest Facilities scan conflicts with last Ops update"))
+  if (text === "Out for repair, still showing as racked")
     return [
       "Maybe the asset returned from RMA and was re-racked without an Ops scan",
       "Maybe Facilities mis-scanned a neighboring asset",

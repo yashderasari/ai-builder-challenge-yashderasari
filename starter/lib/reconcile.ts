@@ -123,13 +123,13 @@ export async function buildReconcileReport(): Promise<ReconcileReport> {
     if (!ops) {
       if (facilities) {
         const detail = !finance
-          ? "Physically racked with no record in Operations or Finance — untracked asset with no procurement or intake history"
+          ? "Racked with no record anywhere"
           : finance.status === "pending_receipt"
-            ? "Physically racked but never received into Operations — Finance raised a PO but the receive scan was skipped"
-            : "Physically racked with no Operations record — Finance has it capitalized but Ops has never seen it";
+            ? "Racked but never formally received"
+            : "Racked — Finance has it, Ops doesn't";
         report.real_drift.ghost_in_facilities.push(makeRow(j, detail));
       } else if (finance) {
-        report.real_drift.ghost_in_finance.push(makeRow(j, "Finance has a record — Operations doesn't"));
+        report.real_drift.ghost_in_finance.push(makeRow(j, "Finance has it, Ops doesn't"));
       }
       continue;
     }
@@ -142,14 +142,14 @@ export async function buildReconcileReport(): Promise<ReconcileReport> {
     if (notRacked && !facilities) {
       if (ops.state === "stored" || ops.state === "received") {
         const detail = ops.state === "stored"
-          ? "Stored in Operations — physically on-premises but no Facilities audit record to confirm location"
-          : "In receiving — physically on-premises but no Facilities audit record to confirm location";
+          ? "In storage — not audited by Facilities"
+          : "In receiving — not audited by Facilities";
         report.unaudited.no_facilities_record.push(makeRow(j, detail));
       } else {
         const facilityNote: Record<string, string> = {
           rma_pending: "Out for repair — not tracked by Facilities",
-          disposed: "Disposed — no longer tracked by Facilities",
-          unreceived: "Not yet received — no Facilities record expected",
+          disposed:    "Disposed — not tracked by Facilities",
+          unreceived:  "Not yet received",
         };
         report.expected.not_in_facilities.push(makeRow(j, facilityNote[ops.state] ?? "Not currently racked"));
       }
@@ -159,28 +159,18 @@ export async function buildReconcileReport(): Promise<ReconcileReport> {
       const facIsMoreRecent = facTs > opsTs;
 
       if (facIsMoreRecent) {
-        if (ops.state === "disposed") {
-          report.ambiguous.facilities_newer_than_ops.push(
-            makeRow(j, "Latest Facilities scan conflicts with last Ops update — disposed asset still showing racked"),
-          );
-        } else {
-          report.ambiguous.facilities_newer_than_ops.push(
-            makeRow(j, `Latest Facilities scan conflicts with last Ops update — ${STATE_DESCRIPTION[ops.state] ?? "non-racked"} in Ops but Facilities sees it racked`),
-          );
-        }
+        const detail = ops.state === "disposed"
+          ? "Disposed but still showing as racked"
+          : "Out for repair, still showing as racked";
+        report.ambiguous.facilities_newer_than_ops.push(makeRow(j, detail));
       } else {
-        if (ops.state === "disposed") {
-          report.real_drift.location_mismatch.push(
-            makeRow(j, "Disposed in Operations — Facilities still shows it as racked"),
-          );
-        } else {
-          report.real_drift.location_mismatch.push(
-            makeRow(j, "Removed from Operations — Facilities wasn't updated"),
-          );
-        }
+        const detail = ops.state === "disposed"
+          ? "Disposed — Facilities record not cleared"
+          : "Removed — Facilities record not cleared";
+        report.real_drift.location_mismatch.push(makeRow(j, detail));
       }
     } else if (ops.state === "in_service" && !facilities) {
-      report.ambiguous.missing_from_facilities.push(makeRow(j, "Active in Operations — no Facilities scan on record"));
+      report.ambiguous.missing_from_facilities.push(makeRow(j, "Deployed — no Facilities scan on record"));
     } else if (ops.state === "in_service" && facilities) {
       const opsRack = opsRackString(ops);
       const rackMismatch = facilities.rack_location && ops.location.rack && !facilities.rack_location.includes(ops.location.rack);
@@ -188,16 +178,16 @@ export async function buildReconcileReport(): Promise<ReconcileReport> {
       const siteMismatch = !rackMismatch && !ruMismatch && facilities.rack_location && opsRack && !facilities.rack_location.startsWith(ops.location.site ?? "");
 
       if (rackMismatch) {
-        report.real_drift.location_mismatch.push(makeRow(j, `Location conflict: Operations says rack ${ops.location.rack}, Facilities disagrees`));
+        report.real_drift.location_mismatch.push(makeRow(j, "Rack location mismatch"));
       } else if (ruMismatch) {
-        report.real_drift.location_mismatch.push(makeRow(j, `Location conflict: Operations says slot ${ops.location.ru}, Facilities disagrees`));
+        report.real_drift.location_mismatch.push(makeRow(j, `Slot mismatch — systems disagree`));
       } else if (siteMismatch) {
-        report.real_drift.location_mismatch.push(makeRow(j, `Location conflict: Operations and Facilities show different buildings`));
+        report.real_drift.location_mismatch.push(makeRow(j, "Building mismatch between systems"));
       }
 
       if (daysSince(facilities.last_observed) > STALE_DAYS) {
         report.ambiguous.stale_observation.push(
-          makeRow(j, `Facilities last scanned ${Math.floor(daysSince(facilities.last_observed))} days ago — asset still active`),
+          makeRow(j, `Facilities scan ${Math.floor(daysSince(facilities.last_observed))} days old`),
         );
       }
     }
@@ -207,32 +197,32 @@ export async function buildReconcileReport(): Promise<ReconcileReport> {
     if (!finance) {
       if (ops.state === "received" || ops.state === "stored") {
         report.real_drift.ghost_in_finance.push(
-          makeRow(j, "No Finance record — asset is physically on-premises in Operations but Finance has no procurement entry"),
+          makeRow(j, "On-premises — no Finance record"),
         );
       } else if (ops.state !== "unreceived") {
         report.unaudited.no_finance_record.push(
-          makeRow(j, "No Finance record — Operations has no matching procurement entry for this asset"),
+          makeRow(j, "No Finance record"),
         );
       }
     } else if (ops.state === "disposed") {
       if (finance.status === "capitalized") {
         report.real_drift.ghost_in_finance.push(
-          makeRow(j, "Disposed in Operations — Finance still shows it as active, should be retired"),
+          makeRow(j, "Disposed — Finance still active"),
         );
       } else if (finance.status === "impaired") {
         report.ambiguous.state_finance_conflict.push(
-          makeRow(j, "Disposed in Operations — Finance marked it impaired but has not retired it yet"),
+          makeRow(j, "Disposed — Finance not fully updated"),
         );
       }
       // finance.status === "retired" → clean, no flag
     } else if (ops.state === "rma_pending") {
       if (finance.status === "capitalized") {
         report.ambiguous.state_finance_conflict.push(
-          makeRow(j, "Out for repair — Finance still shows it as active, should be marked impaired"),
+          makeRow(j, "Out for repair — Finance not updated"),
         );
       } else if (finance.status === "retired") {
         report.real_drift.ghost_in_finance.push(
-          makeRow(j, "Out for repair — Finance has already retired it, but Operations expects it back"),
+          makeRow(j, "Finance retired it — Ops expects return"),
         );
       }
       // finance.status === "impaired" → clean, no flag

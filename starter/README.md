@@ -62,11 +62,7 @@ Deploy → POST to facilities (set rack location) + finance (capitalize). Store 
 
 The brief says to "decide where the writes live" for facilities and finance. The easy path is firing them from the browser after a successful scan response — the proxy already handles the token, so it's not a security issue per se. I put them in server-side route handlers (`app/api/scans/deploy`, `app/api/scans/store`) instead. The reason: doing all three writes (ops scan + facilities + finance) in one server round-trip means partial failures are visible in one place, the logic is testable without a browser, and the reconcile report can trust that a successful deploy response means all three systems were updated. The downside is an extra network hop from browser → Next.js → API, but the tradeoff is clearly worth it here.
 
-**2. Explicit scan mode toggle vs. auto-detect**
-
-The brief says both USB scanner and phone camera flows should "feel native." The tempting path is auto-detecting: if the device has no physical keyboard (mobile), switch to camera automatically. I kept it as an explicit toggle per page instead. Auto-detection based on `navigator.maxTouchPoints` or user-agent is unreliable — a tablet with a paired Bluetooth scanner would get the wrong default, and a tech switching between workstations mid-shift shouldn't have the UI change under them. Explicit is predictable, and predictable matters at 11pm in a dock bay.
-
-**3. Reconcile display: severity-first with cause in the detail, not cause-first**
+**2. Reconcile display: severity-first with cause in the detail, not cause-first**
 
 My first instinct was to group rows by cause (ghost / missing / location mismatch / stale / state-finance conflict) — each bucket would have exactly one action associated with it. I switched to severity-first (Action needed / Needs review / Unaudited / Expected) because a manager scanning the page on a Monday morning wants to know urgency before cause. The cause is surfaced per-row in the Issues column and in the hover tooltip, so nothing is hidden — you just get triage order for free. The four severity cards double as filters, so a manager can say "show me only the things Finance needs to act on" by clicking Needs review and filtering by the Finance column.
 
@@ -79,6 +75,8 @@ My first instinct was to group rows by cause (ghost / missing / location mismatc
 **"Three scan endpoints (receive, store, deploy)"** — The brief's "How this works" section counts three scan endpoints, but the API has four: `receive`, `store`, `deploy`, and `transfer`. The brief's own "What to build" section correctly requires all four. The count in the summary is off by one.
 
 **"The happy-path is a 10-step smoke test"** — The table header in the brief says 10 steps; the actual checklist has 11 (the last one covers mobile viewport). Not a problem in practice, but worth noting since we were told to count.
+
+**Reconcile join is fully in-memory** — all three sources are fetched in full on every `/api/reconcile` call, unioned by tag, and categorized in the application layer. No filtering happens before the join. For 1,000 assets this is fine — `/v1/assets` returns all records with no pagination and the brief is designed around that. At real scale this would be the first thing to change: push the join and filters down to the database, paginate before the data hits the application layer, and cache the report rather than recomputing it on every request.
 
 **"Two static mocks for facilities and finance"** — The mocks accept POSTs and persist changes in-memory until `/v1/reset` or server restart. They're not static — they're mutable in-memory overlays on top of the seeded baseline. This is the right design for the challenge (otherwise write-back would be untestable), but "static" is the wrong word.
 

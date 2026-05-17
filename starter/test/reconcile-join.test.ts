@@ -170,15 +170,15 @@ describe("buildReconcileReport — join logic", () => {
 
   // --- expected gaps --------------------------------------------------------
 
-  it("classifies stored assets as expected gaps (not in facilities)", () => {
-    const tags = report.expected.not_in_facilities.map(r => r.asset_tag);
+  it("classifies stored assets as unaudited (no facilities record, not expected)", () => {
+    const tags = report.unaudited.no_facilities_record.map(r => r.asset_tag);
     expect(tags).toContain("C0000104");
     expect(tags).toContain("C0000105");
     expect(tags).toContain("C0000112");
   });
 
-  it("classifies received assets as expected gaps (not in facilities)", () => {
-    const tags = report.expected.not_in_facilities.map(r => r.asset_tag);
+  it("classifies received assets as unaudited (no facilities record, not expected)", () => {
+    const tags = report.unaudited.no_facilities_record.map(r => r.asset_tag);
     expect(tags).toContain("C0000107");
   });
 
@@ -204,33 +204,37 @@ describe("buildReconcileReport — join logic", () => {
   it("does not flag known ops assets as ghosts", () => {
     const facGhostTags = report.real_drift.ghost_in_facilities.map(r => r.asset_tag);
     const finGhostTags = report.real_drift.ghost_in_finance.map(r => r.asset_tag);
-    for (const asset of OPS_ASSETS) {
-      expect(facGhostTags).not.toContain(asset.asset_tag);
-      expect(finGhostTags).not.toContain(asset.asset_tag);
+    // C0000109 is intentionally in ghost_in_finance (disposed but Finance still capitalized — should be retired)
+    const opsTagsToCheck = OPS_ASSETS.map(a => a.asset_tag).filter(t => t !== "C0000109");
+    for (const tag of opsTagsToCheck) {
+      expect(facGhostTags).not.toContain(tag);
+      expect(finGhostTags).not.toContain(tag);
     }
   });
 
   // --- real drift: location mismatch ----------------------------------------
 
-  it("detects disposed asset still racked in facilities (C0000109)", () => {
-    const tags = report.real_drift.location_mismatch.map(r => r.asset_tag);
+  it("detects disposed asset still racked in facilities (C0000109) — ambiguous because fac scan is newer than ops", () => {
+    // C0000109 fac last_observed 2026-03-15 > ops updated_at 2026-01-02 → facilities_newer_than_ops
+    const tags = report.ambiguous.facilities_newer_than_ops.map(r => r.asset_tag);
     expect(tags).toContain("C0000109");
-    const row = report.real_drift.location_mismatch.find(r => r.asset_tag === "C0000109")!;
+    const row = report.ambiguous.facilities_newer_than_ops.find(r => r.asset_tag === "C0000109")!;
     expect(row.detail).toMatch(/disposed/i);
   });
 
-  it("detects rma_pending asset still racked in facilities (C0000108)", () => {
-    const tags = report.real_drift.location_mismatch.map(r => r.asset_tag);
+  it("detects rma_pending asset still racked in facilities (C0000108) — ambiguous because fac scan is newer than ops", () => {
+    // C0000108 fac last_observed 2026-04-21 > ops updated_at 2026-01-02 → facilities_newer_than_ops
+    const tags = report.ambiguous.facilities_newer_than_ops.map(r => r.asset_tag);
     expect(tags).toContain("C0000108");
-    const row = report.real_drift.location_mismatch.find(r => r.asset_tag === "C0000108")!;
-    expect(row.detail).toMatch(/de-rack/i);
+    const row = report.ambiguous.facilities_newer_than_ops.find(r => r.asset_tag === "C0000108")!;
+    expect(row.detail).toMatch(/repair/i);
   });
 
   it("detects rack unit mismatch for in_service asset (C0000110)", () => {
     const tags = report.real_drift.location_mismatch.map(r => r.asset_tag);
     expect(tags).toContain("C0000110");
     const row = report.real_drift.location_mismatch.find(r => r.asset_tag === "C0000110")!;
-    expect(row.detail).toMatch(/rack unit/i);
+    expect(row.detail).toMatch(/slot/i);
   });
 
   it("does not flag clean in_service assets as location mismatch", () => {
@@ -253,10 +257,11 @@ describe("buildReconcileReport — join logic", () => {
     expect(tags).not.toContain("C0000101");
   });
 
-  it("detects disposed asset still capitalized in finance (C0000109)", () => {
-    const tags = report.ambiguous.state_finance_conflict.map(r => r.asset_tag);
+  it("detects disposed asset still capitalized in finance (C0000109) — real drift, should be retired", () => {
+    // disposed + capitalized = Finance hasn't retired it → real drift (ghost_in_finance)
+    const tags = report.real_drift.ghost_in_finance.map(r => r.asset_tag);
     expect(tags).toContain("C0000109");
-    const row = report.ambiguous.state_finance_conflict.find(r => r.asset_tag === "C0000109")!;
+    const row = report.real_drift.ghost_in_finance.find(r => r.asset_tag === "C0000109")!;
     expect(row.detail).toMatch(/disposed/i);
   });
 
@@ -283,12 +288,19 @@ describe("buildReconcileReport — join logic", () => {
     }
   });
 
-  it("each asset tagged as stored/received/disposed with no facilities record lands in expected, not real drift", () => {
+  it("stored/received assets with no facilities record land in unaudited, not expected or real drift", () => {
+    const unauditedTags = new Set(report.unaudited.no_facilities_record.map(r => r.asset_tag));
+    // C0000104, C0000105, C0000107, C0000112 are stored/received with no facilities scan
+    expect(unauditedTags.has("C0000104")).toBe(true);
+    expect(unauditedTags.has("C0000105")).toBe(true);
+    expect(unauditedTags.has("C0000107")).toBe(true);
+    expect(unauditedTags.has("C0000112")).toBe(true);
+    // Must NOT appear in expected or real drift
+    const driftTags = new Set(report.real_drift.location_mismatch.map(r => r.asset_tag));
     const expectedTags = new Set(report.expected.not_in_facilities.map(r => r.asset_tag));
-    // C0000104, C0000105, C0000107, C0000112 have no facilities record and non-racked states
-    expect(expectedTags.has("C0000104")).toBe(true);
-    expect(expectedTags.has("C0000105")).toBe(true);
-    expect(expectedTags.has("C0000107")).toBe(true);
-    expect(expectedTags.has("C0000112")).toBe(true);
+    for (const tag of ["C0000104", "C0000105", "C0000107", "C0000112"]) {
+      expect(driftTags.has(tag)).toBe(false);
+      expect(expectedTags.has(tag)).toBe(false);
+    }
   });
 });

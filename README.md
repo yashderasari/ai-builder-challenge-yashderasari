@@ -66,7 +66,7 @@ The brief says to "decide where the writes live" for facilities and finance. The
 
 My first instinct was to group rows by cause (ghost / missing / location mismatch / stale / state-finance conflict) — each bucket would have exactly one action associated with it. I switched to severity-first (Action needed / Needs review / Unaudited / Expected) because a manager scanning the page on a Monday morning wants to know urgency before cause. The cause is surfaced per-row in the Issues column and in the hover tooltip, so nothing is hidden — you just get triage order for free. The four severity cards double as filters, so a manager can say "show me only the things Finance needs to act on" by clicking Needs review and filtering by the Finance column.
 
-**4. No KPI dashboard for asset value**
+**3. No KPI dashboard for asset value**
 
 `book_value_usd` is available on every Finance record and it was tempting to show a "Total portfolio value" card at the top of the manager view. I left it out. Finance has stale `capitalized` records for disposed assets, missing records for some received assets, and no depreciation adjustments — so any sum would look authoritative but be built on unreconciled data. The only number you could display with confidence is the sum for the 704 verified-clean assets, but even that reflects intake value, not current value. Showing a confident financial KPI on a dashboard whose entire purpose is to surface data you can't fully trust would undermine the point of the tool.
 

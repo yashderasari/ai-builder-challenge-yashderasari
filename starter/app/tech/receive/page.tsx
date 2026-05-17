@@ -21,6 +21,19 @@ const ASSET_CLASSES: AssetClass[] = [
   "instrument", "compute", "network", "power", "consumable_durable",
 ];
 
+const KNOWN_MODELS: { manufacturer: string; model: string; asset_class: AssetClass }[] = [
+  { manufacturer: "BioSystems Inc",  model: "Genomics Sequencer 2000",   asset_class: "instrument" },
+  { manufacturer: "BioSystems Inc",  model: "Genomics Sequencer 4000",   asset_class: "instrument" },
+  { manufacturer: "ChemAnalytics",   model: "Mass Spectrometer 800",     asset_class: "instrument" },
+  { manufacturer: "ChemAnalytics",   model: "Mass Spectrometer 1200",    asset_class: "instrument" },
+  { manufacturer: "OptiLab",         model: "Confocal Microscope CX-9",  asset_class: "instrument" },
+  { manufacturer: "NetCorp",         model: "Lab Network Switch 48p",    asset_class: "network"    },
+  { manufacturer: "NetCorp",         model: "Lab Network Switch 96p",    asset_class: "network"    },
+  { manufacturer: "ServerCo",        model: "Compute Server R760",       asset_class: "compute"    },
+  { manufacturer: "ServerCo",        model: "Compute Server R860",       asset_class: "compute"    },
+  { manufacturer: "PowerLine",       model: "Lab PDU 50A",               asset_class: "power"      },
+];
+
 const emptyLocation: Location = { site: "", room: null, row: null, rack: null, ru: null };
 
 export default function TechReceivePage() {
@@ -247,6 +260,24 @@ export default function TechReceivePage() {
               />
             </div>
 
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Select model</label>
+              <select
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-600 focus:outline-none bg-white"
+                defaultValue=""
+                onChange={e => {
+                  const m = KNOWN_MODELS[Number(e.target.value)];
+                  if (m) { setManufacturer(m.manufacturer); setModel(m.model); setAssetClass(m.asset_class); }
+                }}
+              >
+                <option value="" disabled>Pick from known models…</option>
+                {KNOWN_MODELS.map((m, i) => (
+                  <option key={i} value={i}>{m.manufacturer} — {m.model}</option>
+                ))}
+                <option value="">Other (fill in below)</option>
+              </select>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Manufacturer</label>
@@ -288,13 +319,17 @@ export default function TechReceivePage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Site <span className="text-red-500">*</span></label>
-                  <input
+                  <select
                     required
                     value={location.site}
                     onChange={e => setLocation(l => ({ ...l, site: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-600 focus:outline-none"
-                    placeholder="e.g. SF-HQ"
-                  />
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-600 focus:outline-none bg-white"
+                  >
+                    <option value="" disabled>Select site…</option>
+                    {["Lab-Building-A", "Lab-Building-B", "Lab-Building-C"].map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Room</label>

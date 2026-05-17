@@ -8,10 +8,9 @@ import type { SystemFlag, UnifiedRow, IssueSystem, IssueSeverity } from "@/compo
 export default async function ManagerReconcilePage({
   searchParams,
 }: {
-  searchParams: Promise<{ rs?: string; he?: string }>;
+  searchParams: Promise<{ rs?: string }>;
 }) {
-  const { rs: severityFilter, he } = await searchParams;
-  const hideExpected = he === "1";
+  const { rs: severityFilter } = await searchParams;
   let report: ReconcileReport;
   try {
     const host = (await headers()).get("host") ?? "localhost:3000";
@@ -102,10 +101,10 @@ export default async function ManagerReconcilePage({
   addRows(report.unaudited.no_finance_record, "unaudited", ["finance"],
     row => ({ ops: "ok", facilities: row.facilities ? "ok" : "none", finance: "none" }));
 
-  // Expected
-  addRows(report.expected.not_in_facilities, "expected", ["facilities"],
+  // Expected — folded into unaudited (same root cause: Facilities only tracks racked gear)
+  addRows(report.expected.not_in_facilities, "unaudited", ["facilities"],
     row => ({ ops: "ok", facilities: "none", finance: row.finance ? "ok" : "none" }));
-  addRows(report.expected.not_in_finance, "expected", ["finance"],
+  addRows(report.expected.not_in_finance, "unaudited", ["finance"],
     row => ({ ops: "ok", facilities: row.facilities ? "ok" : "none", finance: "none" }));
 
   const allRows = Array.from(unifiedRowMap.values());
@@ -116,7 +115,6 @@ export default async function ManagerReconcilePage({
   const realCount      = allRows.filter(r => r.severity === "real").length;
   const ambiguousCount = allRows.filter(r => r.severity === "ambiguous").length;
   const unauditedCount = allRows.filter(r => r.severity === "unaudited").length;
-  const expectedCount  = allRows.filter(r => r.severity === "expected").length;
 
   return (
     <div className="max-w-7xl space-y-8">
@@ -142,19 +140,17 @@ export default async function ManagerReconcilePage({
       </div>
 
       {/* Summary cards — click to filter the table */}
-      <div className={`grid gap-3 grid-cols-2 ${hideExpected ? "sm:grid-cols-3" : "sm:grid-cols-4"}`}>
+      <div className="grid gap-3 grid-cols-2 sm:grid-cols-3">
         {([
-          { key: "real",      label: "Action needed",  sub: "Two systems directly conflict",       active: "border-red-400 bg-red-100",      inactive: "border-red-200 bg-red-50",      count: realCount,      textBold: "text-red-800",    textSub: "text-red-500" },
-          { key: "ambiguous", label: "Needs review",   sub: "Likely timing or process gaps",      active: "border-yellow-400 bg-yellow-100", inactive: "border-yellow-200 bg-yellow-50", count: ambiguousCount, textBold: "text-yellow-800", textSub: "text-yellow-600" },
-          { key: "unaudited", label: "Unaudited",      sub: "Missing data, cannot confirm clean", active: "border-slate-400 bg-slate-100",   inactive: "border-slate-200 bg-slate-50",  count: unauditedCount, textBold: "text-slate-700",  textSub: "text-slate-500" },
-          ...(!hideExpected ? [{ key: "expected", label: "Expected gaps", sub: "Not tracked by design", active: "border-gray-400 bg-gray-100", inactive: "border-gray-200 bg-gray-50", count: expectedCount, textBold: "text-gray-500", textSub: "text-gray-400" }] : []),
+          { key: "real",      label: "Action needed",       sub: "Two systems directly conflict",  active: "border-red-400 bg-red-100",      inactive: "border-red-200 bg-red-50",      count: realCount,      textBold: "text-red-800",    textSub: "text-red-500" },
+          { key: "ambiguous", label: "Needs review",        sub: "Likely timing or process gaps",  active: "border-yellow-400 bg-yellow-100", inactive: "border-yellow-200 bg-yellow-50", count: ambiguousCount, textBold: "text-yellow-800", textSub: "text-yellow-600" },
+          { key: "unaudited", label: "No Facilities record", sub: "Not racked — cannot verify",    active: "border-slate-400 bg-slate-100",   inactive: "border-slate-200 bg-slate-50",  count: unauditedCount, textBold: "text-slate-700",  textSub: "text-slate-500" },
         ] as const).map(({ key, label, sub, active, inactive, count, textBold, textSub }) => {
           const isActive = severityFilter === key;
-          const heParam = hideExpected ? "&he=1" : "";
           return (
             <Link
               key={key}
-              href={isActive ? `/manager/reconcile${hideExpected ? "?he=1" : ""}` : `/manager/reconcile?rs=${key}${heParam}`}
+              href={isActive ? "/manager/reconcile" : `/manager/reconcile?rs=${key}`}
               className={`rounded-lg border px-5 py-4 transition-colors hover:opacity-90 ${isActive ? active : inactive}`}
             >
               <p className={`text-3xl font-bold ${textBold}`}>{count}</p>

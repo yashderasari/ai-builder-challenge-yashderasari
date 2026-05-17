@@ -80,8 +80,8 @@ const SEVERITY_RANK: Record<IssueSeverity, number> = { real: 0, ambiguous: 1, un
 function SeverityLabel({ severity }: { severity: IssueSeverity }) {
   if (severity === "real")      return <span className="text-red-600 font-medium">Action needed</span>;
   if (severity === "ambiguous") return <span className="text-amber-600 font-medium">Needs review</span>;
-  if (severity === "unaudited") return <span className="text-slate-500 font-medium">Unaudited</span>;
-  return <span className="text-gray-400 font-medium">Expected</span>;
+  if (severity === "unaudited") return <span className="text-slate-500 font-medium">No Fac. record</span>;
+  return <span className="text-gray-400 font-medium">No Fac. record</span>;
 }
 
 function IssueDot({ severity }: { severity: IssueSeverity }) {
@@ -519,10 +519,7 @@ function UnifiedIssueTableInner({ rows }: { rows: UnifiedRow[] }) {
   const router = useRouter();
 
   const severityFilter = searchParams.get("rs") ?? "";
-  const hideExpected = searchParams.get("he") === "1";
-  const filteredRows = rows
-    .filter(r => !severityFilter || r.severity === severityFilter)
-    .filter(r => !hideExpected || r.severity !== "expected");
+  const filteredRows = rows.filter(r => !severityFilter || r.severity === severityFilter);
 
   const filter = (searchParams.get("rf") ?? "all") as SystemFilter;
   const search = searchParams.get("rq") ?? "";
@@ -550,12 +547,6 @@ function UnifiedIssueTableInner({ rows }: { rows: UnifiedRow[] }) {
     router.replace(`?${p.toString()}`, { scroll: false });
   };
   const setPage = (p: number) => updateParam("rp", p === 1 ? "" : String(p));
-  const toggleHideExpected = () => {
-    const p = new URLSearchParams(searchParams.toString());
-    if (hideExpected) p.delete("he"); else p.set("he", "1");
-    p.delete("rp");
-    router.replace(`?${p.toString()}`, { scroll: false });
-  };
 
   function handleSort(key: SortKey) {
     if (key === sortKey) setSortDir(d => d === "asc" ? "desc" : "asc");
@@ -602,12 +593,6 @@ function UnifiedIssueTableInner({ rows }: { rows: UnifiedRow[] }) {
         <span><span className="text-amber-500 font-bold">⚠</span> review</span>
         <span><span className="text-gray-300 font-medium">—</span> no record</span>
       </div>
-      <button
-        onClick={toggleHideExpected}
-        className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs transition-colors ${hideExpected ? "border-gray-400 bg-gray-100 text-gray-700" : "border-gray-300 bg-white text-gray-500 hover:bg-gray-50"}`}
-      >
-        {hideExpected ? "Expected hidden" : "Hide expected"}
-      </button>
       <button
         onClick={() => setExpanded(e => !e)}
         className="shrink-0 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
